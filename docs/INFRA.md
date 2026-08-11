@@ -125,7 +125,7 @@ O `postinstall` no `package.json` executa `prisma generate`, garantindo que o Ve
 
 ## Conexão Vercel <-> GitHub (Git Integration)
 
-**Status:** Pendente. O `vercel git connect` via CLI falhou com erro de permissão. A conexão precisa ser feita manualmente no dashboard da Vercel.
+**Status:** Conectado. Verificado em 2026-08-11 via `vercel git connect` (CLI reportou "already connected").
 
 **Passos manuais:**
 
