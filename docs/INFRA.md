@@ -9,7 +9,7 @@ Este documento lista os recursos de infraestrutura do projeto. **Nenhuma senha o
 | PostgreSQL (Supabase) | Manual no dashboard | **Ativo e testado** |
 | Redis (Upstash) | Automatizado via CLI | **Ativo e testado** |
 | Vercel (projeto + env vars) | Automatizado via CLI | **Projeto criado e vinculado** |
-| Vercel <-> GitHub Git Integration | Manual no dashboard | **Pendente — ver instruções abaixo** |
+| Vercel <-> GitHub Git Integration | Manual no dashboard | **Conectado e verificado (auto-deploy funcional)** |
 | GitHub Actions CI | Automatizado via workflow | **Configurado** |
 
 ## Ambiente: Desenvolvimento
@@ -125,19 +125,31 @@ O `postinstall` no `package.json` executa `prisma generate`, garantindo que o Ve
 
 ## Conexão Vercel <-> GitHub (Git Integration)
 
-**Status:** Conectado. Verificado em 2026-08-11 via `vercel git connect` (CLI reportou "already connected").
+**Status:** Conectado e verificado. Em 2026-08-11, um push trivial para `main` disparou automaticamente o deployment `j989czh70` (Production, 38s, Ready). O `vercel git connect` via CLI confirmou "already connected".
 
-**Passos manuais:**
+**Framework Preset:** Corrigido de `Other` para `Next.js` via `npx vercel project update --framework nextjs --output-directory .next` em 2026-08-11.
+
+**Configuração atual do projeto:**
+
+| Setting | Value |
+|---------|-------|
+| Framework Preset | Next.js |
+| Build Command | `npm run build` or `next build` |
+| Output Directory | `.next` |
+| Install Command | `npm install` |
+| Root Directory | `.` |
+| Node.js Version | 24.x |
+
+**Verificação de auto-deploy (2026-08-11):**
+
+1. Commit `7ac4515` pushed to `main` → deployment `j989czh70` criado automaticamente
+2. Status: `Building` → `Ready` (38s)
+3. URL do deployment: https://amazon-dsp-allocation-j989czh70-illt.vercel.app (HTTP 200)
+4. URL de produção: https://amazon-dsp-allocation-illt.vercel.app (HTTP 200)
+
+**Passos manuais (já concluídos):**
 
 1. Acesse https://vercel.com/illt/amazon-dsp-allocation/settings/git
-2. Clique em "Connect Git Repository"
-3. Selecione `drbarret/amazon-dsp-allocation`
-4. Configure:
-   - **Production Branch:** `main`
-   - **Framework Preset:** Next.js
-   - **Build Command:** `npm run build` (override se necessário)
-   - **Output Directory:** `.next`
-   - **Install Command:** `npm install`
-5. Salve. Após conectar, pushes para `main` disparam deploys de produção e PRs disparam preview deployments automaticamente.
-
-Enquanto a integração Git não estiver ativa, deploys precisam ser disparados manualmente via `npx vercel --prod`.
+2. Conecte o repositório `drbarret/amazon-dsp-allocation`
+3. Configure Production Branch como `main`
+4. Framework Preset: Next.js (corrigido via CLI)
