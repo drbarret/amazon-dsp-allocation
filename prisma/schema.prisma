@@ -1,13 +1,575 @@
 // This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// learn more about it in the docs: https://pris.ly/d/prisma
 
-// Get a free hosted Postgres database in seconds: `npx create-db`
+// Amazon DSP Driver Allocation System
+// Generated from plans/data-model.md with user-confirmed adjustments applied.
 
 generator client {
-  provider = "prisma-client"
+  provider = "prisma-client-js"
   output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+// ---------- Enums ----------
+
+enum UserRole {
+  DRIVER
+  SUPERVISOR
+  ACCOUNT_MANAGER
+}
+
+enum WeekDay {
+  DOMINGO
+  SEGUNDA
+  TERCA
+  QUARTA
+  QUINTA
+  SEXTA
+  SABADO
+}
+
+// User-confirmed: Ciclo 2 / Tarde / Speed are equivalent.
+// Speed as an extra shift is represented by ScheduleStatus.SPEED.
+enum Cycle {
+  CICLO_1 // Manhã
+  CICLO_2 // Tarde / Speed
+}
+
+enum AvailabilityAnswer {
+  SIM // Disponível
+  NAO // Indisponível
+  CICLO_2 // Disponível apenas no Ciclo 2 / Tarde / Speed
+}
+
+enum VehicleType {
+  CARGO_VAN
+  PASSEIO
+}
+
+enum VehicleRestrictionCode {
+  GNV
+  REFRIGERADOR
+  CAPACIDADE_REDUZIDA
+  NATURAL_GAS
+}
+
+enum VacancyStatus {
+  RASCUNHO
+  PUBLICADA
+  FECHADA
+}
+
+enum ScheduleStatus {
+  SIM // Alocado
+  SEM_ESCALA // 7º dia consecutivo / limite atingido
+  A_CONFIRMAR // Disponível mas sem vaga suficiente
+  NAO // Não informou disponibilidade
+  SPEED // Turno extra/especial
+  FALTA // Falta no dia
+}
+
+enum ScorecardClassification {
+  FANTASTIC_PLUS
+  FANTASTIC
+  GREAT
+  FAIR
+  POOR
+}
+
+enum BehaviorType {
+  ADVERTENCIA
+  SUSPENSAO_ALOCACAO
+  PENALIDADE_PONTUACAO
+  EXCECAO // excepcional override aprovado pelo supervisor
+}
+
+enum WhatsAppMessageStatus {
+  PENDING
+  SCHEDULED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum AuditEventType {
+  LOGIN
+  LOGOUT
+  AVAILABILITY_SUBMITTED
+  AVAILABILITY_UPDATED
+  VACANCY_PUBLISHED
+  VACANCY_UPDATED
+  ALLOCATION_RUN
+  SCHEDULE_CREATED
+  SCHEDULE_UPDATED
+  SCHEDULE_PUBLISHED
+  WHATSAPP_SENT
+  SCORECARD_IMPORTED
+  BEHAVIOR_RECORD_CREATED
+  BEHAVIOR_RECORD_UPDATED
+  MANUAL_OVERRIDE
+  CONSENT_GIVEN
+  CONSENT_REVOKED
+}
+
+// ---------- Core Entities ----------
+
+model TransportCompany {
+  id          String   @id @default(uuid())
+  name        String
+  legalName   String?
+  cnpj        String?  @unique
+  amazonDspId String?  @unique
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  regions         Region[]
+  users           User[]
+  vacancyPrograms VacancyProgram[]
+
+  @@map("transport_companies")
+}
+
+model Region {
+  id                 String   @id @default(uuid())
+  transportCompanyId String
+  code               String // XSP7, ELP7, DSP5, plus future regions
+  name               String
+  city               String?
+  state              String? // SP, RJ, etc.
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  transportCompany  TransportCompany       @relation(fields: [transportCompanyId], references: [id])
+  vacancyPrograms   VacancyProgram[]
+  regionPreferences RegionCityPreference[]
+
+  @@unique([transportCompanyId, code])
+  @@map("regions")
+}
+
+model User {
+  id                   String    @id @default(uuid())
+  transportCompanyId   String?
+  email                String    @unique
+  name                 String
+  role                 UserRole
+  amazonSub            String?   @unique
+  amazonAccessToken    String? // encrypted at application level
+  amazonRefreshToken   String? // encrypted at application level
+  amazonTokenExpiresAt DateTime?
+  emailVerified        Boolean   @default(false)
+  active               Boolean   @default(true)
+  lastLoginAt          DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  transportCompany TransportCompany?    @relation(fields: [transportCompanyId], references: [id])
+  driverProfile    DriverProfile?
+  availabilities   WeeklyAvailability[]
+  schedules        Schedule[]
+  whatsAppMessages WhatsAppMessage[]
+  auditLogs        AuditLog[]
+  allocationRuns   AllocationRun[]
+
+  // User-confirmed: supervisors mark behavior, account managers approve it.
+  behaviorMarks     BehaviorRecord[] @relation("BehaviorMarkedBy")
+  behaviorApprovals BehaviorRecord[] @relation("BehaviorApprovedBy")
+
+  // User-confirmed: account managers mark favorites manually.
+  manualFavoriteOverrides FavoriteDriver[] @relation("FavoriteManualOverrideBy")
+
+  @@index([email])
+  @@index([role, active])
+  @@map("users")
+}
+
+model DriverProfile {
+  id                  String      @id @default(uuid())
+  userId              String      @unique
+  cpf                 String?     @unique // encrypted at application level
+  phone               String? // encrypted at application level
+  phoneFormatted      String? // E.164 + display format
+  vehicleType         VehicleType @default(CARGO_VAN)
+  transporterId       String? // Amazon Transporter ID
+  onboardingCompleted Boolean     @default(false)
+
+  // User-confirmed: deactivate after 3 approved behavior marks.
+  behaviorApprovedCount Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user                User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicleRestrictions VehicleRestriction[]
+  regionPreferences   RegionCityPreference[]
+  favoriteFlags       FavoriteDriver[]
+  behaviorRecords     BehaviorRecord[]
+  driverScores        DriverScore[]
+
+  @@index([transporterId])
+  @@map("driver_profiles")
+}
+
+model VehicleRestriction {
+  id              String                 @id @default(uuid())
+  driverProfileId String
+  code            VehicleRestrictionCode
+  notes           String?
+  createdAt       DateTime               @default(now())
+
+  driverProfile DriverProfile @relation(fields: [driverProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([driverProfileId, code])
+  @@map("vehicle_restrictions")
+}
+
+model RegionCityPreference {
+  id              String   @id @default(uuid())
+  driverProfileId String?
+  regionId        String?
+  city            String?
+  priority        Int      @default(1) // 1 = primary
+  createdAt       DateTime @default(now())
+
+  driverProfile DriverProfile? @relation(fields: [driverProfileId], references: [id], onDelete: Cascade)
+  region        Region?        @relation(fields: [regionId], references: [id])
+
+  @@index([driverProfileId])
+  @@index([regionId])
+  @@map("region_city_preferences")
+}
+
+// ---------- Availability ----------
+
+model AvailabilityWeek {
+  id            String    @id @default(uuid())
+  weekKey       String // e.g., WK-31
+  year          Int
+  weekNumber    Int // ISO/Amazon week number
+  opensAt       DateTime
+  closesAt      DateTime
+  extendedUntil DateTime?
+  status        String    @default("OPEN") // OPEN, CLOSED
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  days WeeklyAvailability[]
+
+  @@unique([year, weekNumber])
+  @@index([weekKey])
+  @@map("availability_weeks")
+}
+
+model WeeklyAvailability {
+  id                 String             @id @default(uuid())
+  availabilityWeekId String
+  userId             String
+  day                WeekDay
+  cycle              Cycle              @default(CICLO_1)
+  answer             AvailabilityAnswer
+  submittedAt        DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  availabilityWeek AvailabilityWeek @relation(fields: [availabilityWeekId], references: [id], onDelete: Cascade)
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([availabilityWeekId, userId, day, cycle])
+  @@index([availabilityWeekId, userId])
+  @@index([userId, availabilityWeekId])
+  @@map("weekly_availabilities")
+}
+
+// ---------- Vacancies ----------
+
+model VacancyProgram {
+  id                 String        @id @default(uuid())
+  transportCompanyId String
+  regionId           String
+  weekKey            String // WK-XX
+  year               Int
+  weekNumber         Int
+  day                WeekDay
+  cycle              Cycle         @default(CICLO_1)
+  vehicleCategory    String // e.g., "Small R2.0 BR", "Inside Natural Gas", "Passenger"
+  vehicleType        VehicleType? // optional normalized type
+  quantity           Int
+  status             VacancyStatus @default(RASCUNHO)
+  source             String? // MANUAL, AMAZON_IMPORT
+  createdById        String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  transportCompany    TransportCompany     @relation(fields: [transportCompanyId], references: [id])
+  region              Region               @relation(fields: [regionId], references: [id])
+  distributionResults DistributionResult[]
+
+  @@unique([regionId, year, weekNumber, day, cycle, vehicleCategory])
+  @@index([weekKey, regionId])
+  @@index([regionId, year, weekNumber])
+  @@index([status])
+  @@map("vacancy_programs")
+}
+
+// ---------- Allocation ----------
+
+model AllocationRun {
+  id             String    @id @default(uuid())
+  weekKey        String
+  year           Int
+  weekNumber     Int
+  regionId       String?
+  triggeredById  String
+  triggerType    String // AUTO, MANUAL, REEXECUTE
+  status         String    @default("RUNNING") // RUNNING, COMPLETED, FAILED
+  configSnapshot Json? // JSON copy of rules/weights used
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+  errorMessage   String?
+  createdAt      DateTime  @default(now())
+
+  triggeredBy User                 @relation(fields: [triggeredById], references: [id])
+  results     DistributionResult[]
+  schedules   Schedule[]
+
+  @@index([weekKey, regionId])
+  @@index([status])
+  @@map("allocation_runs")
+}
+
+model DistributionResult {
+  id                    String   @id @default(uuid())
+  allocationRunId       String
+  vacancyProgramId      String
+  driverProfileId       String
+  day                   WeekDay
+  cycle                 Cycle
+  score                 Float    @default(0) // computed priority score
+  matchedVehicleType    Boolean  @default(false)
+  matchedRegionPref     Boolean  @default(false)
+  isFavorite            Boolean  @default(false)
+  behaviorPenalty       Float    @default(0)
+  consecutiveDaysBefore Int?
+  assigned              Boolean  @default(false)
+  reason                String? // why assigned or not
+  createdAt             DateTime @default(now())
+
+  allocationRun  AllocationRun  @relation(fields: [allocationRunId], references: [id], onDelete: Cascade)
+  vacancyProgram VacancyProgram @relation(fields: [vacancyProgramId], references: [id], onDelete: Cascade)
+
+  @@index([allocationRunId, driverProfileId])
+  @@index([allocationRunId, vacancyProgramId])
+  @@map("distribution_results")
+}
+
+// ---------- Schedule / Roster ----------
+
+model Schedule {
+  id              String         @id @default(uuid())
+  allocationRunId String?
+  userId          String
+  regionId        String
+  weekKey         String
+  year            Int
+  weekNumber      Int
+  day             WeekDay
+  cycle           Cycle          @default(CICLO_1)
+  status          ScheduleStatus
+  vehicleCategory String? // actual vacancy category filled
+  overrideById    String? // supervisor who manually changed (day swaps allowed at any time)
+  overrideReason  String?
+  overrideAt      DateTime?
+  publishedAt     DateTime?
+  publishedById   String?
+  isLocked        Boolean        @default(false) // after WhatsApp send
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  allocationRun AllocationRun? @relation(fields: [allocationRunId], references: [id])
+  user          User           @relation(fields: [userId], references: [id])
+
+  auditLogs        AuditLog[]
+  whatsappMessages WhatsAppMessage[]
+
+  @@unique([userId, year, weekNumber, day, cycle, regionId])
+  @@index([weekKey, regionId])
+  @@index([userId, year, weekNumber])
+  @@index([status, isLocked])
+  @@map("schedules")
+}
+
+// ---------- Scorecard ----------
+
+model ScorecardImport {
+  id           String    @id @default(uuid())
+  weekKey      String
+  year         Int
+  weekNumber   Int
+  fileName     String
+  fileUrl      String? // S3/Storage URL
+  importedById String?
+  status       String    @default("PROCESSING") // PROCESSING, COMPLETED, FAILED
+  errors       Json?
+  processedAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  driverScores DriverScore[]
+
+  @@index([weekKey])
+  @@index([status])
+  @@map("scorecard_imports")
+}
+
+model DriverScore {
+  id                      String                   @id @default(uuid())
+  scorecardImportId       String
+  driverProfileId         String
+  daRank                  Int?
+  transporterId           String?
+  totalScore              Float?
+  delivered               Int?
+  dcr                     Float?
+  dnrDpmo                 Float?
+  contactCompliance       Float?
+  scanCompliance          Float?
+  whExceptionFlag         Boolean?
+  swaOta                  Float?
+  swipeToFinishCompliance Float?
+  workHourCompliance      Float?
+  attrition               Float?
+  dspLateCancellationRate Float?
+  classification          ScorecardClassification?
+
+  // User-confirmed: favorite flag is now set manually by account managers.
+  // This field is kept for reference/import context only.
+  isFavorite Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  scorecardImport ScorecardImport @relation(fields: [scorecardImportId], references: [id], onDelete: Cascade)
+  driverProfile   DriverProfile   @relation(fields: [driverProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([scorecardImportId, driverProfileId])
+  @@index([driverProfileId, scorecardImportId])
+  @@map("driver_scores")
+}
+
+// ---------- Behavior & Favorites ----------
+
+model FavoriteDriver {
+  id              String  @id @default(uuid())
+  driverProfileId String
+  weekKey         String
+  year            Int
+  weekNumber      Int
+  isFavorite      Boolean @default(true)
+
+  // User-confirmed: favorites are marked manually by account managers and guarantee +1 weekly slot.
+  source             String  @default("MANUAL") // MANUAL
+  manualOverrideById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  driverProfile    DriverProfile @relation(fields: [driverProfileId], references: [id], onDelete: Cascade)
+  manualOverrideBy User?         @relation("FavoriteManualOverrideBy", fields: [manualOverrideById], references: [id], onDelete: SetNull)
+
+  @@unique([driverProfileId, year, weekNumber])
+  @@index([weekKey])
+  @@map("favorite_drivers")
+}
+
+model BehaviorRecord {
+  id              String       @id @default(uuid())
+  driverProfileId String
+  type            BehaviorType
+  description     String
+  severity        Int          @default(1) // 1 light, 5 severe
+
+  // User-confirmed workflow: supervisor marks, account manager approves,
+  // penalty is applied to next week's planning, then reset.
+  weekKey           String // week the behavior was recorded for
+  effectiveFromWeek String // week the penalty takes effect (usually next week)
+  effectiveToWeek   String? // null = until reset
+  status            String  @default("PENDING") // PENDING, APPROVED, APPLIED, RESET
+  impactScore       Float   @default(0) // points to subtract from priority
+
+  markedById   String? // supervisor who flagged the behavior
+  approvedById String? // account manager who approved the penalty
+  approvedAt   DateTime?
+  appliedAt    DateTime? // when the penalty affected planning
+  resetAt      DateTime? // when the penalty was reset after application
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  driverProfile DriverProfile @relation(fields: [driverProfileId], references: [id], onDelete: Cascade)
+  markedBy      User?         @relation("BehaviorMarkedBy", fields: [markedById], references: [id], onDelete: SetNull)
+  approvedBy    User?         @relation("BehaviorApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@index([driverProfileId, effectiveFromWeek])
+  @@index([type, effectiveFromWeek])
+  @@index([status])
+  @@map("behavior_records")
+}
+
+// ---------- WhatsApp ----------
+
+model WhatsAppMessage {
+  id                String                @id @default(uuid())
+  userId            String
+  scheduleId        String?
+  weekKey           String?
+  templateName      String?
+  body              String                @db.Text
+  mediaUrl          String? // generated schedule card image
+  externalMessageId String? // Meta message id
+  status            WhatsAppMessageStatus @default(PENDING)
+  statusHistory     Json? // [{ status, at }]
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  readAt            DateTime?
+  failedReason      String?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schedule Schedule? @relation(fields: [scheduleId], references: [id])
+
+  @@index([userId, weekKey])
+  @@index([externalMessageId])
+  @@index([status])
+  @@map("whatsapp_messages")
+}
+
+// ---------- Audit ----------
+
+model AuditLog {
+  id              String         @id @default(uuid())
+  eventType       AuditEventType
+  actorId         String? // user who performed the action
+  targetUserId    String? // affected user, if any
+  scheduleId      String?
+  allocationRunId String?
+  oldValue        Json?
+  newValue        Json?
+  justification   String?
+  metadata        Json?
+  ipAddress       String?
+  userAgent       String?
+  createdAt       DateTime       @default(now())
+
+  actor    User?     @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  schedule Schedule? @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+
+  @@index([eventType, createdAt])
+  @@index([actorId, createdAt])
+  @@index([scheduleId])
+  @@index([targetUserId])
+  @@map("audit_logs")
 }

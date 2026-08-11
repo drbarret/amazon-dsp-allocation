@@ -104,6 +104,16 @@ Sistema de alocação de motoristas para operação Amazon DSP (ILLT). Consolida
 
 - Plano de implementação: `plans/PLAN.md`
 - Decisões de arquitetura: `plans/adr.md`
+- Infraestrutura e recursos provisionados: `docs/INFRA.md`
+
+## Infraestrutura
+
+Os recursos de desenvolvimento (PostgreSQL/Supabase, Redis/Upstash e Vercel) estão documentados em `docs/INFRA.md`, junto com os comandos para testar conectividade:
+
+```bash
+npm run test:db
+npm run test:redis
+```
 
 ## Licença
 

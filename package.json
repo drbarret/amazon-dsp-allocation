@@ -15,10 +15,13 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "test:db": "node scripts/test-db.mjs",
+    "test:redis": "node scripts/test-redis.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
+    "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -38,7 +41,9 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
+    "ioredis": "^6.0.0",
     "jsdom": "^30.0.1",
+    "pg": "^8.23.0",
     "prettier": "^3.5.3",
     "prettier-plugin-tailwindcss": "^0.8.1",
     "prisma": "^7.9.1",
