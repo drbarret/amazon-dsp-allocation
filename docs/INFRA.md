@@ -9,6 +9,8 @@ Este documento lista os recursos de infraestrutura do projeto. **Nenhuma senha o
 | PostgreSQL (Supabase) | Manual no dashboard | **Ativo e testado** |
 | Redis (Upstash) | Automatizado via CLI | **Ativo e testado** |
 | Vercel (projeto + env vars) | Automatizado via CLI | **Projeto criado e vinculado** |
+| Vercel <-> GitHub Git Integration | Manual no dashboard | **Pendente — ver instruções abaixo** |
+| GitHub Actions CI | Automatizado via workflow | **Configurado** |
 
 ## Ambiente: Desenvolvimento
 
@@ -17,6 +19,14 @@ Este documento lista os recursos de infraestrutura do projeto. **Nenhuma senha o
 | PostgreSQL | Supabase | `sa-east-1` | `amazon-dsp-allocation-dev` (ref: `urpjdqokedunpfmnxoac`) | https://supabase.com/dashboard/project/urpjdqokedunpfmnxoac |
 | Redis | Upstash | `sa-east-1` | `amazon-dsp-allocation-dev` (ID: `78be2f4b-53e4-4d2e-894c-8a5478dc93b4`) | https://console.upstash.com/redis/78be2f4b-53e4-4d2e-894c-8a5478dc93b4 |
 | Hospedagem | Vercel | *edge* | `amazon-dsp-allocation` (illt) | https://vercel.com/illt/amazon-dsp-allocation |
+
+## Ambiente: Produção
+
+| Recurso | URL |
+|---------|-----|
+| Produção (alias) | https://amazon-dsp-allocation.vercel.app |
+| Deploy direto | https://amazon-dsp-allocation-kuf2ehgdu-illt.vercel.app |
+| Inspect | https://vercel.com/illt/amazon-dsp-allocation/2pQx2T4dNocTfvQPNnZogRnyShjd |
 
 ## Variáveis de ambiente no Vercel
 
@@ -99,3 +109,35 @@ node scripts/test-prisma-client.mjs
 - **Redis:** Upstash (preferido no ADR) por ser serverless, ter TLS nativo e preço inicial baixo.
 - **Região:** Preferência por `sa-east-1` / São Paulo para conformidade com a LGPD.
 - **Credenciais:** Nunca commitadas; gerenciadas via Vercel + `.env` local.
+
+## CI/CD (GitHub Actions)
+
+O workflow `.github/workflows/ci.yml` executa em push para `main` e em pull requests:
+
+| Job | O que faz | Bloqueante? |
+|-----|-----------|-------------|
+| `lint-typecheck-build` | `npm ci` → `prisma generate` → `lint` → `typecheck` → `build` | Sim |
+| `test` | `npm ci` → `prisma generate` → `vitest --run --passWithNoTests` | Não (`continue-on-error: true`) |
+
+Variáveis dummy (`DATABASE_URL`, `REDIS_URL`) são definidas no `env` do workflow para que o build não precise de credenciais reais. O Prisma Client é gerado com `npx prisma generate` antes do build.
+
+O `postinstall` no `package.json` executa `prisma generate`, garantindo que o Vercel gere o cliente automaticamente durante `npm install`.
+
+## Conexão Vercel <-> GitHub (Git Integration)
+
+**Status:** Pendente. O `vercel git connect` via CLI falhou com erro de permissão. A conexão precisa ser feita manualmente no dashboard da Vercel.
+
+**Passos manuais:**
+
+1. Acesse https://vercel.com/illt/amazon-dsp-allocation/settings/git
+2. Clique em "Connect Git Repository"
+3. Selecione `drbarret/amazon-dsp-allocation`
+4. Configure:
+   - **Production Branch:** `main`
+   - **Framework Preset:** Next.js
+   - **Build Command:** `npm run build` (override se necessário)
+   - **Output Directory:** `.next`
+   - **Install Command:** `npm install`
+5. Salve. Após conectar, pushes para `main` disparam deploys de produção e PRs disparam preview deployments automaticamente.
+
+Enquanto a integração Git não estiver ativa, deploys precisam ser disparados manualmente via `npx vercel --prod`.

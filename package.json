@@ -17,7 +17,8 @@
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "test:db": "node scripts/test-db.mjs",
-    "test:redis": "node scripts/test-redis.mjs"
+    "test:redis": "node scripts/test-redis.mjs",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
