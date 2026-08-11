@@ -24,9 +24,9 @@ Este documento lista os recursos de infraestrutura do projeto. **Nenhuma senha o
 
 | Recurso | URL |
 |---------|-----|
-| Produção (alias) | https://amazon-dsp-allocation.vercel.app |
-| Deploy direto | https://amazon-dsp-allocation-kuf2ehgdu-illt.vercel.app |
-| Inspect | https://vercel.com/illt/amazon-dsp-allocation/2pQx2T4dNocTfvQPNnZogRnyShjd |
+| Produção (alias) | https://amazon-dsp-allocation-illt.vercel.app |
+| Deploy direto | https://amazon-dsp-allocation-7j2cr5kan-illt.vercel.app |
+| Inspect | https://vercel.com/illt/amazon-dsp-allocation/4xZfdfZfBvNYWwqcvsJUVs4hQ9wT |
 
 ## Variáveis de ambiente no Vercel
 
