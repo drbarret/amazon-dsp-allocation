@@ -36,12 +36,13 @@ Variáveis já configuradas:
 - `REDIS_URL` — Production, Preview, Development
 - `NEXTAUTH_SECRET` — Development
 - `NEXTAUTH_URL` — Development
+- `AUTH_AMAZON_ID` — Production, Preview, Development
+- `AUTH_AMAZON_SECRET` — Production, Preview, Development
+- `AUTH_SECRET` — Production, Preview, Development
+- `AUTH_URL` — Production, Preview, Development
 
 Variáveis pendentes:
 
-- `COGNITO_CLIENT_ID`
-- `COGNITO_CLIENT_SECRET`
-- `COGNITO_ISSUER`
 - `WHATSAPP_API_TOKEN`
 - `WHATSAPP_PHONE_NUMBER_ID`
 - `WHATSAPP_BUSINESS_ACCOUNT_ID`
@@ -122,6 +123,32 @@ O workflow `.github/workflows/ci.yml` executa em push para `main` e em pull requ
 Variáveis dummy (`DATABASE_URL`, `REDIS_URL`) são definidas no `env` do workflow para que o build não precise de credenciais reais. O Prisma Client é gerado com `npx prisma generate` antes do build.
 
 O `postinstall` no `package.json` executa `prisma generate`, garantindo que o Vercel gere o cliente automaticamente durante `npm install`.
+
+## Autenticação: Login with Amazon (LWA)
+
+**Decisão (2026-08-11):** Substituímos AWS Cognito por Login with Amazon (LWA) direto via OAuth 2.0. A implementação usa Auth.js (NextAuth v5) com um provider OAuth customizado.
+
+**Endpoints LWA:**
+- Authorization: `https://www.amazon.com/ap/oa`
+- Token: `https://api.amazon.com/auth/o2/token`
+- User Profile: `https://api.amazon.com/user/profile`
+- Scope: `profile` (retorna `user_id`, `name`, `email`)
+
+**Callback URLs que devem ser registradas no Amazon Developer Console:**
+- Produção: `https://amazon-dsp-allocation-illt.vercel.app/api/auth/callback/amazon`
+- Desenvolvimento local: `http://localhost:3000/api/auth/callback/amazon`
+
+**Allowed Origins:**
+- `https://amazon-dsp-allocation-illt.vercel.app`
+- `http://localhost:3000`
+
+**Variáveis de ambiente:**
+- `AUTH_AMAZON_ID` — LWA Client ID
+- `AUTH_AMAZON_SECRET` — LWA Client Secret
+- `AUTH_SECRET` — Auth.js secret (32+ chars)
+- `AUTH_URL` — URL base da aplicação
+
+**Modelo de dados:** As tabelas `accounts`, `sessions` e `verification_tokens` foram adicionadas ao schema Prisma para suportar o adapter de banco de dados do Auth.js.
 
 ## Conexão Vercel <-> GitHub (Git Integration)
 
