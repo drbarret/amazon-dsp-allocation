@@ -134,6 +134,10 @@ O `postinstall` no `package.json` executa `prisma generate`, garantindo que o Ve
 - User Profile: `https://api.amazon.com/user/profile`
 - Scope: `profile` (retorna `user_id`, `name`, `email`)
 
+**Callback URL verificada em produção (2026-08-12):**
+- `https://amazon-dsp-allocation-illt.vercel.app/api/auth/callback/amazon`
+- Extraída do `redirect_uri` no redirect do signin para `amazon.com` (verificado com `curl -X POST /api/auth/signin/amazon`)
+
 **Callback URLs que devem ser registradas no Amazon Developer Console:**
 - Produção: `https://amazon-dsp-allocation-illt.vercel.app/api/auth/callback/amazon`
 - Desenvolvimento local: `http://localhost:3000/api/auth/callback/amazon`
@@ -149,6 +153,21 @@ O `postinstall` no `package.json` executa `prisma generate`, garantindo que o Ve
 - `AUTH_URL` — URL base da aplicação
 
 **Modelo de dados:** As tabelas `accounts`, `sessions` e `verification_tokens` foram adicionadas ao schema Prisma para suportar o adapter de banco de dados do Auth.js.
+
+## Deployment Protection (Vercel)
+
+**Status (2026-08-12):** Vercel Authentication (SSO Protection) foi **desabilitado** para produção via API REST (`PATCH /v9/projects` com `ssoProtection: null`).
+
+**Motivo:** O Vercel Authentication estava interceptando todas as rotas dinâmicas (`/api/auth/*`, `/dashboard`), redirecionando para `vercel.com/sso-api`. Isso bloqueava completamente o fluxo OAuth do Login with Amazon, pois o callback `/api/auth/callback/amazon` era interceptado antes de chegar ao Next.js.
+
+**Evidência da correção:**
+- `GET /api/auth/providers` → retorna JSON com o provider `amazon` (antes retornava HTML do Vercel)
+- `GET /dashboard` (não autenticado) → redireciona para `/login` (antes redirecionava para `vercel.com/sso-api`)
+- `POST /api/auth/signin/amazon` → redireciona para `amazon.com/ap/oa` com o `redirect_uri` correto
+
+**Configuração anterior:** `ssoProtection.deploymentType: "all_except_custom_domains"` (Vercel Authentication ativo para todos os deployments)
+
+**Para reabilitar (se necessário):** Acesse https://vercel.com/illt/amazon-dsp-allocation/settings → Deployment Protection → Vercel Authentication → Enable
 
 ## Conexão Vercel <-> GitHub (Git Integration)
 
