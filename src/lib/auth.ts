@@ -32,17 +32,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async signIn({ user, account }) {
       if (!user.email) return false;
 
-      // On first sign-in, create the user with a default DRIVER role.
-      // The Prisma adapter already creates the user row, but we need to
-      // set the role and amazonSub. We do this via a DB check after the
-      // adapter has created the user.
       if (account?.provider === "amazon") {
         const existingUser = await prisma.user.findUnique({
           where: { email: user.email },
         });
 
         if (existingUser) {
-          // Update amazonSub and lastLoginAt on every login
           await prisma.user.update({
             where: { id: existingUser.id },
             data: {
@@ -51,7 +46,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             },
           });
 
-          // Block inactive users
           if (!existingUser.active) {
             return false;
           }
@@ -60,17 +54,31 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       return true;
     },
-    async session({ session, user }) {
-      // Attach role and amazonSub to the session
-      if (session.user) {
+    async jwt({ token, user, account }) {
+      // On first sign-in, copy user id to token
+      if (user) {
+        token.id = user.id;
+      }
+
+      // On every token refresh, fetch role from DB
+      if (account?.provider === "amazon" && token.email) {
         const dbUser = await prisma.user.findUnique({
-          where: { id: user.id },
+          where: { email: token.email },
           select: { role: true, amazonSub: true },
         });
         if (dbUser) {
-          session.user.role = dbUser.role as UserRole;
-          session.user.amazonSub = dbUser.amazonSub;
+          token.role = dbUser.role as UserRole;
+          token.amazonSub = dbUser.amazonSub;
         }
+      }
+
+      return token;
+    },
+    async session({ session, token }) {
+      if (session.user) {
+        session.user.id = token.id as string;
+        session.user.role = token.role as UserRole;
+        session.user.amazonSub = token.amazonSub as string | null;
       }
       return session;
     },
@@ -79,6 +87,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     signIn: "/login",
   },
   session: {
-    strategy: "database",
+    strategy: "jwt",
   },
 });
