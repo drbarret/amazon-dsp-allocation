@@ -55,12 +55,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return true;
     },
     async jwt({ token, user, account }) {
-      // On first sign-in, copy user id to token
       if (user) {
         token.id = user.id;
       }
 
-      // On every token refresh, fetch role from DB
       if (account?.provider === "amazon" && token.email) {
         const dbUser = await prisma.user.findUnique({
           where: { email: token.email },
