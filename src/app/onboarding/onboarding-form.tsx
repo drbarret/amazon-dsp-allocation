@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import { submitOnboarding } from "./actions";
 import { AlertCircleIcon, Loader2Icon } from "lucide-react";
 
@@ -24,7 +25,12 @@ const RESTRICTION_LABELS: Record<string, string> = {
   NATURAL_GAS: "Gás Natural",
 };
 
-export function OnboardingForm() {
+interface Props {
+  userName: string;
+  userEmail: string;
+}
+
+export function OnboardingForm({ userName, userEmail }: Props) {
   const [vehicleType, setVehicleType] = useState("CARGO_VAN");
   const [restrictions, setRestrictions] = useState<Record<string, boolean>>({});
   const [consent, setConsent] = useState(false);
@@ -44,23 +50,50 @@ export function OnboardingForm() {
     setRestrictions((prev) => ({ ...prev, [code]: !prev[code] }));
   };
 
+  const canSubmit = consent && !isPending;
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 p-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 px-4 py-8">
       <Card className="w-full max-w-lg">
         <CardHeader>
+          <Progress value={0} className="mb-2" />
           <CardTitle className="text-xl">Complete seu cadastro</CardTitle>
           <CardDescription>
             Preencha os dados abaixo para começar a usar o sistema de alocação.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form action={formAction} className="space-y-5">
+          <form action={formAction} className="space-y-4">
             {state?.error && (
               <Alert variant="destructive">
                 <AlertCircleIcon className="size-4" />
                 <AlertDescription>{state.error}</AlertDescription>
               </Alert>
             )}
+
+            {/* Full name — pre-filled from OAuth, read-only */}
+            <div className="space-y-2">
+              <Label htmlFor="name">Nome completo</Label>
+              <Input
+                id="name"
+                value={userName}
+                readOnly
+                disabled
+                className="bg-muted text-muted-foreground"
+              />
+            </div>
+
+            {/* Email — pre-filled from OAuth, read-only */}
+            <div className="space-y-2">
+              <Label htmlFor="email">E-mail</Label>
+              <Input
+                id="email"
+                value={userEmail}
+                readOnly
+                disabled
+                className="bg-muted text-muted-foreground"
+              />
+            </div>
 
             {/* CPF */}
             <div className="space-y-2">
@@ -86,6 +119,20 @@ export function OnboardingForm() {
                 maxLength={16}
                 inputMode="tel"
               />
+            </div>
+
+            {/* Transporter ID */}
+            <div className="space-y-2">
+              <Label htmlFor="transporterId">Transporter ID (Amazon)</Label>
+              <Input
+                id="transporterId"
+                name="transporterId"
+                placeholder="Seu ID de transportador Amazon"
+                inputMode="text"
+              />
+              <p className="text-xs text-muted-foreground">
+                Identificador do motorista no sistema Amazon DSP.
+              </p>
             </div>
 
             {/* Vehicle Type */}
@@ -137,17 +184,19 @@ export function OnboardingForm() {
                   required
                 />
                 <span className="text-muted-foreground">
-                  Autorizo o processamento dos meus dados pessoais (CPF e
-                  telefone) para fins de alocação de rotas, conforme a Lei Geral
-                  de Proteção de Dados (LGPD).
+                  Aceito o uso dos meus dados pessoais (CPF e telefone) para
+                  fins de alocação de rotas, conforme a Lei Geral de Proteção
+                  de Dados (LGPD).
                 </span>
               </label>
             </div>
 
-            <Button type="submit" className="w-full" disabled={isPending}>
-              {isPending && <Loader2Icon className="mr-2 size-4 animate-spin" />}
-              Concluir cadastro
-            </Button>
+            <div className="sticky bottom-0 bg-card pt-4">
+              <Button type="submit" className="w-full" disabled={!canSubmit}>
+                {isPending && <Loader2Icon className="mr-2 size-4 animate-spin" />}
+                Concluir cadastro
+              </Button>
+            </div>
           </form>
         </CardContent>
       </Card>

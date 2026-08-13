@@ -1,6 +1,6 @@
 import { signIn } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircleIcon } from "lucide-react";
 
@@ -12,11 +12,18 @@ export default async function LoginPage({
   const { error } = await searchParams;
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-zinc-50 p-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 px-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Amazon DSP</CardTitle>
-          <CardDescription>Sistema de Alocação de Motoristas</CardDescription>
+          <div className="mx-auto mb-3 flex items-center justify-center gap-2">
+            <span className="text-sm font-semibold tracking-tight text-slate-500">
+              ILLT
+            </span>
+            <span className="text-sm font-semibold tracking-tight text-amber-600">
+              Amazon DSP
+            </span>
+          </div>
+          <CardTitle className="text-xl">Acesso ao Sistema de Escala</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {error === "deactivated" && (
@@ -45,10 +52,15 @@ export default async function LoginPage({
             }}
           >
             <Button type="submit" className="w-full" size="lg">
-              Entrar com a Amazon
+              Entrar com Amazon
             </Button>
           </form>
         </CardContent>
+        <CardFooter className="justify-center">
+          <p className="text-xs text-muted-foreground">
+            Use seu e-mail corporativo autorizado.
+          </p>
+        </CardFooter>
       </Card>
     </div>
   );

@@ -27,7 +27,6 @@ export default async function ProtectedLayout({
   }
 
   const roleLabel: Record<string, string> = {
-    ADMIN: "Administrador",
     ACCOUNT_MANAGER: "Gerente de Contas",
     SUPERVISOR: "Supervisor",
     DRIVER: "Motorista",

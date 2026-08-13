@@ -13,5 +13,10 @@ export default async function OnboardingPage() {
     redirect("/login?error=deactivated");
   }
 
-  return <OnboardingForm />;
+  return (
+    <OnboardingForm
+      userName={session.user.name ?? ""}
+      userEmail={session.user.email ?? ""}
+    />
+  );
 }

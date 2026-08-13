@@ -14,6 +14,7 @@ export async function submitOnboarding(formData: FormData) {
   const cpf = (formData.get("cpf") as string) ?? "";
   const phone = (formData.get("phone") as string) ?? "";
   const vehicleType = (formData.get("vehicleType") as string) ?? "CARGO_VAN";
+  const transporterId = (formData.get("transporterId") as string) ?? "";
   const consentGiven = formData.get("consent") === "on";
 
   // Parse restriction codes from checkboxes
@@ -35,6 +36,7 @@ export async function submitOnboarding(formData: FormData) {
     phone,
     vehicleType: vehicleType as VehicleType,
     restrictionCodes,
+    transporterId,
     consentGiven,
   });
 

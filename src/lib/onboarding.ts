@@ -90,6 +90,7 @@ export interface OnboardingInput {
   phone: string;
   vehicleType: VehicleType;
   restrictionCodes: VehicleRestrictionCode[];
+  transporterId: string;
   consentGiven: boolean;
 }
 
@@ -161,6 +162,7 @@ export async function completeOnboarding(
       phone: encryptedPhone,
       phoneFormatted: input.phone,
       vehicleType: input.vehicleType,
+      transporterId: input.transporterId || null,
       onboardingCompleted: true,
       vehicleRestrictions: {
         create: input.restrictionCodes.map((code) => ({ code })),
@@ -172,6 +174,7 @@ export async function completeOnboarding(
       phone: encryptedPhone,
       phoneFormatted: input.phone,
       vehicleType: input.vehicleType,
+      transporterId: input.transporterId || null,
       onboardingCompleted: true,
       vehicleRestrictions: {
         deleteMany: {},

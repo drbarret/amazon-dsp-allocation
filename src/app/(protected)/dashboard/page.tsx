@@ -3,7 +3,6 @@ import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/ca
 import { TruckIcon, ClockIcon } from "lucide-react";
 
 const ROLE_LABELS: Record<string, string> = {
-  ADMIN: "Administrador",
   ACCOUNT_MANAGER: "Gerente de Contas",
   SUPERVISOR: "Supervisor",
   DRIVER: "Motorista",
