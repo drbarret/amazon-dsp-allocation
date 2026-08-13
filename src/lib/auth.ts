@@ -88,14 +88,34 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.id = user.id;
       }
 
-      // On first sign-in, read role from DB
+      // On first sign-in, read role from DB and apply pre-registered role if needed
       if (account?.provider === "amazon" && token.email) {
         const dbUser = await prisma.user.findUnique({
           where: { email: token.email },
           select: { role: true, amazonSub: true, active: true },
         });
         if (dbUser) {
-          token.role = dbUser.role as UserRole;
+          // If the user was created with default DRIVER role but has a
+          // pre-registered AllowedEmail with a higher role, apply it now.
+          // This fixes the bug where corporate-domain users always got DRIVER
+          // on first sign-in regardless of their pre-registered role.
+          if (dbUser.role === "DRIVER") {
+            const allowedEmail = await prisma.allowedEmail.findUnique({
+              where: { email: token.email },
+              select: { role: true },
+            });
+            if (allowedEmail && allowedEmail.role !== "DRIVER") {
+              await prisma.user.update({
+                where: { email: token.email },
+                data: { role: allowedEmail.role },
+              });
+              token.role = allowedEmail.role as UserRole;
+            } else {
+              token.role = dbUser.role as UserRole;
+            }
+          } else {
+            token.role = dbUser.role as UserRole;
+          }
           token.amazonSub = dbUser.amazonSub;
           token.active = dbUser.active;
           token.roleLastFetched = Date.now();
