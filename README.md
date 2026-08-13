@@ -102,8 +102,17 @@ Sistema de alocação de motoristas para operação Amazon DSP (ILLT). Consolida
 
 ## Documentação do Projeto
 
-- Plano de implementação: `plans/PLAN.md`
-- Decisões de arquitetura: `plans/adr.md`
+As especificações autoritativas do sistema estão em [`docs/plans/`](docs/plans/):
+
+- [Plano de implementação](docs/plans/PLAN.md) — fases, tarefas, cronograma e critérios de sucesso
+- [Requisitos](docs/plans/requirements.md) — RF, RNF, regras de negócio e papéis
+- [Modelo de dados](docs/plans/data-model.md) — schema Prisma, entidades, índices e fluxos
+- [UX e wireframes](docs/plans/ux-flows.md) — especificação tela a tela, componentes e classes Tailwind
+- [Algoritmo de distribuição](docs/plans/distribution-algorithm.md) — pseudocódigo, scoring e edge cases
+- [Decisões de arquitetura](docs/plans/adr.md) — ADR com stack, segurança e compliance
+
+Documentação operacional:
+
 - Infraestrutura e recursos provisionados: `docs/INFRA.md`
 
 ## Infraestrutura
