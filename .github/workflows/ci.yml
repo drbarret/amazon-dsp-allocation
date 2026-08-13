@@ -41,7 +41,6 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    continue-on-error: true
 
     steps:
       - name: Checkout
@@ -60,4 +59,4 @@ jobs:
         run: npx prisma generate
 
       - name: Run unit tests
-        run: npm run test -- --run --passWithNoTests
+        run: npm run test -- --run
