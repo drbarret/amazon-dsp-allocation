@@ -1,9 +1,9 @@
-# Phase 1 Verification Report (v2 — Corrected)
+# Phase 1 Verification Report (v3 — Final)
 
 **Date:** 2026-08-13
-**Commit:** `7e348d62aec6a24454df4faa392ba02ea1942cb8`
+**Commit:** `741895ab36b81fe54684af09e44924d4042670bb`
 **Production URL:** `https://amazon-dsp-allocation-illt.vercel.app`
-**Verifier:** Independent re-verification (step-5b)
+**Verifier:** Independent re-verification (step-5c)
 
 ---
 
@@ -12,7 +12,7 @@
 | # | Criterion | Verdict |
 |---|-----------|---------|
 | 1a | ADMIN exists + drbarret@gmail.com is ADMIN | PASS |
-| 1b | Role freshness window (60s) + fail-closed on missing user | NOT VERIFIED |
+| 1b | Role freshness window (60s) + fail-closed on missing user | PASS |
 | 1c | Encryption round-trips | PASS |
 | 1d | Audit row written on login | PASS |
 | 2a | Unauthorized identity blocked (ACCESS_DENIED audit) | PASS |
@@ -27,9 +27,9 @@
 | 4d | DRIVER + SUPERVISOR refused /admin/users | PASS |
 | 4e | Deactivated user cannot sign in | PASS |
 | 4f | Last-admin guardrail | PASS |
-| Dep | Latest commit deployed + READY + no ssoProtection | NOT VERIFIED |
+| Dep | Latest commit deployed + READY + no ssoProtection | PASS |
 
-**Totals:** 15 PASS, 0 FAIL, 2 NOT VERIFIED
+**Totals:** 17 PASS, 0 FAIL, 0 NOT VERIFIED
 
 ---
 
@@ -39,7 +39,7 @@
 
 - **Runner:** Vitest 3.2.7 with `node` environment
 - **Config:** `vitest.config.ts` with `vite-tsconfig-paths` plugin
-- **Test files:** 5 files, 99 tests, all passing
+- **Test files:** 6 files, 105 tests, all passing
 
 ### Test Files
 
@@ -50,6 +50,7 @@
 | `src/lib/__tests__/onboarding.test.ts` | 23 | validateCpf (13), validatePhone (10) |
 | `src/lib/__tests__/access-control.test.ts` | 17 | isCorporateDomain (8), isPreRegistered (4), authorizeSignIn (5) |
 | `src/lib/__tests__/admin-actions.test.ts` | 21 | DRIVER/SUPERVISOR refused (10), ACCOUNT_MANAGER/ADMIN allowed (8), unauthenticated refused (3) |
+| `src/lib/__tests__/jwt-callback.test.ts` | 6 | freshness window (2), fail-closed (1), edge cases (3) |
 
 ### Run Command
 
@@ -60,21 +61,22 @@ npx vitest run
 ### Output
 
 ```
-✓ src/lib/__tests__/access-control.test.ts (17 tests) 8ms
+✓ src/lib/__tests__/jwt-callback.test.ts (6 tests) 8ms
+✓ src/lib/__tests__/access-control.test.ts (17 tests) 10ms
+✓ src/lib/__tests__/crypto.test.ts (12 tests) 11ms
 ✓ src/lib/__tests__/authz.test.ts (26 tests) 11ms
-✓ src/lib/__tests__/crypto.test.ts (12 tests) 13ms
-✓ src/lib/__tests__/admin-actions.test.ts (21 tests) 11ms
-✓ src/lib/__tests__/onboarding.test.ts (23 tests) 7ms
+✓ src/lib/__tests__/admin-actions.test.ts (21 tests) 12ms
+✓ src/lib/__tests__/onboarding.test.ts (23 tests) 6ms
 
-Test Files  5 passed (5)
-     Tests  99 passed (99)
+Test Files  6 passed (6)
+     Tests  105 passed (105)
 ```
 
 ### CI Workflow
 
 - Removed `continue-on-error: true` from the `test` job in `.github/workflows/ci.yml`
 - Removed `--passWithNoTests` flag (tests now exist)
-- Latest CI run on `main`: **success** (run #31754135696)
+- Latest CI run on `main`: **success** (run #31755174215, commit `741895a`)
 - Intermediate run #31754007585 **failed** due to jsdom/Node 20 incompatibility — fixed by switching `vitest.config.ts` environment from `jsdom` to `node` (commit `7e348d6`)
 - All checks pass locally: `npm run lint`, `npm run typecheck`, `npm run build`, `npm run test`
 
@@ -110,11 +112,15 @@ SELECT id, email, role, active FROM "users" WHERE email = 'drbarret@gmail.com'
 
 #### 1b: Role freshness window (60s) + fail-closed
 
-The `ROLE_FRESHNESS_MS = 60_000` constant and the `jwt` callback logic (lines 128-141 of `src/lib/auth.ts`) are verified by code inspection. The callback re-reads role from DB after the freshness window expires and sets `token.active = false` if the user row is missing (fail-closed).
+The `jwt` callback was extracted into `src/lib/jwt-callback.ts` and tested directly via Vitest (`src/lib/__tests__/jwt-callback.test.ts`, 6 tests). The test mocks Prisma and drives the callback with fabricated tokens to prove all three behaviours:
 
-However, this is a JWT callback behavior that requires a real NextAuth session with token rotation to observe end-to-end. The code path is correct by inspection, but the behavior was not exercised against a live session.
+1. **Inside the 60s freshness window:** `roleLastFetched` is 30s ago → no DB read, token unchanged (role and active preserved).
+2. **Past the window:** `roleLastFetched` is 90s ago → DB is queried, role and active are updated from the DB row.
+3. **User row missing:** DB returns null → `token.active = false` (fail-closed), role unchanged.
 
-**Verdict:** NOT VERIFIED
+Edge cases tested: no email on token (skips freshness check), exactly at the 60s boundary (no re-read, strict `>`), and 1ms past the boundary (triggers re-read).
+
+**Verdict:** PASS
 
 #### 1c: Encryption round-trips
 
@@ -379,30 +385,26 @@ With only 1 active ADMIN (`drbarret@gmail.com`), all three guardrails fire corre
 
 ### Deployment
 
-- **Latest deployment:** `dpl_Fqoum1UL2MmqK7qjSPGvbC1zXeAN` (created 2026-08-13 20:11:58 GMT-0300)
-- **Status:** READY
+- **Latest deployment:** GitHub deployment #5897978985 (created 2026-08-13 23:49:17 UTC)
+- **Deployed commit SHA:** `741895ab36b81fe54684af09e44924d4042670bb` (matches `git rev-parse HEAD`)
+- **Status:** success (Vercel deployment status)
 - **Production URL:** `https://amazon-dsp-allocation-illt.vercel.app`
-- **Deployment Protection:** Disabled (`/api/auth/csrf` returns a CSRF token without authentication)
-- **CI run:** #31754135696, success (green)
-- **Git HEAD:** `7e348d62aec6a24454df4faa392ba02ea1942cb8`
+- **Deployment Protection:** Disabled — `/api/auth/csrf` returns a CSRF token (`1a427e75...`) without authentication
+- **`/admin/users` unauthenticated:** Returns 307 redirect to `/login` (confirmed via `fetch` with `redirect: 'manual'`)
+- **`/login`:** Returns 200 (login page renders)
+- **CI run:** #31755174215, success (green), all 105 tests passed in CI
 
-Deployment verification requires Vercel CLI or dashboard access and was not performed from the DB verification script.
-
-**Verdict:** NOT VERIFIED
+**Verdict:** PASS
 
 ---
 
 ## Known Gaps and Risks
 
-1. **1b NOT VERIFIED:** The role freshness window and fail-closed behavior are JWT callback logic that requires a real NextAuth session with token rotation to observe end-to-end. The code path is correct by inspection but was not exercised against a live session.
+1. **No integration tests:** All tests are pure unit tests with mocked dependencies. Integration tests against the real database would require a test database or transaction rollback strategy.
 
-2. **Dep NOT VERIFIED:** Vercel deployment status was not independently verified from the DB script. The deployment exists and is READY per the Vercel dashboard, but this was not re-verified in this pass.
+2. **No E2E tests:** Browser-based testing of the full sign-in → onboarding → admin flow is not implemented.
 
-3. **No integration tests:** All tests are pure unit tests with mocked dependencies. Integration tests against the real database would require a test database or transaction rollback strategy.
-
-4. **No E2E tests:** Browser-based testing of the full sign-in → onboarding → admin flow is not implemented.
-
-5. **The "2 ADMINs" bug in the original report:** The original `verify-phase1.mjs` script created a test actor with `role = 'ADMIN'` before counting active ADMINs, inflating the count from 1 to 2. The v2 script (`verify-phase1-v2.mjs`) counts ADMINs before creating any test data and uses `assertCountsMatch()` to fail loudly (exit code 1) if any table's row count does not match the initial snapshot after each test block.
+3. **The "2 ADMINs" bug in the original report:** The original `verify-phase1.mjs` script created a test actor with `role = 'ADMIN'` before counting active ADMINs, inflating the count from 1 to 2. The v2 script (`verify-phase1-v2.mjs`) counts ADMINs before creating any test data and uses `assertCountsMatch()` to fail loudly (exit code 1) if any table's row count does not match the initial snapshot after each test block.
 
 ---
 
@@ -412,11 +414,14 @@ Deployment verification requires Vercel CLI or dashboard access and was not perf
 |------|--------|
 | `.github/workflows/ci.yml` | Removed `continue-on-error: true` and `--passWithNoTests` from test job |
 | `vitest.config.ts` | Switched environment from `jsdom` to `node` (fixes CI failure on Node 20) |
+| `src/lib/auth.ts` | Extracted `jwtCallback` to separate module; re-exports from `jwt-callback.ts` |
+| `src/lib/jwt-callback.ts` | New: standalone jwt callback with `ROLE_FRESHNESS_MS` export |
 | `src/lib/__tests__/authz.test.ts` | New: 26 tests for role hierarchy, requireAuth, requireRole |
 | `src/lib/__tests__/crypto.test.ts` | New: 12 tests for encrypt/decrypt, blind index |
 | `src/lib/__tests__/onboarding.test.ts` | New: 23 tests for validateCpf, validatePhone |
 | `src/lib/__tests__/access-control.test.ts` | New: 17 tests for isCorporateDomain, isPreRegistered, authorizeSignIn |
 | `src/lib/__tests__/admin-actions.test.ts` | New: 21 tests proving DRIVER/SUPERVISOR are refused at server-action level |
+| `src/lib/__tests__/jwt-callback.test.ts` | New: 6 tests for role freshness window + fail-closed |
 | `scripts/verify-phase1.mjs` | Original verification script (has the "2 ADMINs" counting bug) |
 | `scripts/verify-phase1-v2.mjs` | New: Corrected verification script with per-test row-count assertions |
-| `docs/PHASE1-VERIFICATION.md` | This report — corrected verdicts, real evidence, fixed metadata |
+| `docs/PHASE1-VERIFICATION.md` | This report — all 17 criteria PASS, reconciled totals |
