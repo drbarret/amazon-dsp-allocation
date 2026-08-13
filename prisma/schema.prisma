@@ -19,6 +19,7 @@ enum UserRole {
   DRIVER
   SUPERVISOR
   ACCOUNT_MANAGER
+  ADMIN
 }
 
 enum WeekDay {
@@ -98,6 +99,8 @@ enum WhatsAppMessageStatus {
 enum AuditEventType {
   LOGIN
   LOGOUT
+  ACCESS_DENIED
+  ROLE_CHANGED
   AVAILABILITY_SUBMITTED
   AVAILABILITY_UPDATED
   VACANCY_PUBLISHED
@@ -179,6 +182,7 @@ model User {
   allocationRuns   AllocationRun[]
   accounts         Account[]
   sessions         Session[]
+  allowedEmails    AllowedEmail[] @relation("InvitedBy")
 
   // User-confirmed: supervisors mark behavior, account managers approve it.
   behaviorMarks     BehaviorRecord[] @relation("BehaviorMarkedBy")
@@ -196,6 +200,7 @@ model DriverProfile {
   id                  String      @id @default(uuid())
   userId              String      @unique
   cpf                 String?     @unique // encrypted at application level
+  cpfBlindIndex       String?     @unique // HMAC-SHA256 for deterministic lookup
   phone               String? // encrypted at application level
   phoneFormatted      String? // E.164 + display format
   vehicleType         VehicleType @default(CARGO_VAN)
@@ -617,4 +622,22 @@ model AuditLog {
   @@index([scheduleId])
   @@index([targetUserId])
   @@map("audit_logs")
+}
+
+// ---------- Access Control ----------
+
+model AllowedEmail {
+  id          String    @id @default(uuid())
+  email       String    @unique
+  role        UserRole  @default(DRIVER)
+  invitedById String?
+  status      String    @default("ACTIVE") // ACTIVE, REVOKED
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  invitedBy User? @relation("InvitedBy", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  @@index([email])
+  @@index([status])
+  @@map("allowed_emails")
 }

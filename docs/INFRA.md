@@ -40,6 +40,9 @@ Variáveis já configuradas:
 - `AUTH_AMAZON_SECRET` — Production, Preview, Development
 - `AUTH_SECRET` — Production, Preview, Development
 - `AUTH_URL` — Production, Preview, Development
+- `FIELD_ENCRYPTION_KEY` — Production, Preview, Development
+- `FIELD_BLIND_INDEX_KEY` — Production, Preview, Development
+- `ALLOWED_DOMAINS` — Production, Preview, Development
 
 Variáveis pendentes:
 
@@ -50,7 +53,6 @@ Variáveis pendentes:
 - `AWS_ACCESS_KEY_ID`
 - `AWS_SECRET_ACCESS_KEY`
 - `S3_BUCKET_NAME`
-- `ENCRYPTION_KEY`
 
 ## Como obter os valores locais
 
@@ -153,6 +155,51 @@ O `postinstall` no `package.json` executa `prisma generate`, garantindo que o Ve
 - `AUTH_URL` — URL base da aplicação
 
 **Modelo de dados:** As tabelas `accounts`, `sessions` e `verification_tokens` foram adicionadas ao schema Prisma para suportar o adapter de banco de dados do Auth.js.
+
+## Controle de acesso (modelo híbrido)
+
+O sistema usa um modelo híbrido de controle de acesso para login:
+
+1. **Domínio corporativo auto-aprovado:** qualquer e-mail em um domínio permitido (configurado em `ALLOWED_DOMAINS`) faz login automaticamente.
+2. **Pré-registro:** e-mails fora dos domínios corporativos precisam ser cadastrados na tabela `allowed_emails` por um administrador antes de poderem fazer login.
+3. **Usuário desativado:** um usuário com `active = false` ou `AllowedEmail.status = 'REVOKED'` é recusado em qualquer ponto.
+
+### Como adicionar um domínio permitido
+
+Defina a variável de ambiente `ALLOWED_DOMAINS` como uma lista separada por vírgulas:
+
+```
+ALLOWED_DOMAINS=instalog.com.br,amazon.com.br,outrodominio.com
+```
+
+O valor padrão (se a variável não estiver definida) é `instalog.com.br`.
+
+### Como pré-registrar um e-mail
+
+Insira uma linha na tabela `allowed_emails`:
+
+```sql
+INSERT INTO allowed_emails (id, email, role, "invitedById", status, "createdAt", "updatedAt")
+VALUES (gen_random_uuid()::text, 'novo@exemplo.com', 'DRIVER', '<admin_user_id>', 'ACTIVE', now(), now());
+```
+
+Para revogar o acesso:
+
+```sql
+UPDATE allowed_emails SET status = 'REVOKED', "updatedAt" = now() WHERE email = 'email@exemplo.com';
+```
+
+### Hierarquia de roles
+
+`ADMIN` > `ACCOUNT_MANAGER` > `SUPERVISOR` > `DRIVER`
+
+### Criptografia de campos sensíveis
+
+CPF e telefone são criptografados com AES-256-GCM antes da persistência. O CPF possui um índice cego determinístico (HMAC-SHA256) para busca de duplicatas sem expor o valor real. As chaves são configuradas via `FIELD_ENCRYPTION_KEY` e `FIELD_BLIND_INDEX_KEY`.
+
+### Correção de role congelada
+
+O callback `jwt` do Auth.js agora re-lê a role do banco de dados a cada 60 segundos (janela de frescor), eliminando a necessidade de re-login após mudança de role. Usuários desativados têm `active = false` propagado para o token e são recusados em todas as verificações.
 
 ## Deployment Protection (Vercel)
 

@@ -9,12 +9,14 @@ declare module "next-auth" {
       image?: string | null;
       role?: UserRole;
       amazonSub?: string | null;
+      active?: boolean;
     };
   }
 
   interface User {
     role?: UserRole;
     amazonSub?: string | null;
+    active?: boolean;
   }
 }
 
@@ -22,5 +24,6 @@ declare module "@auth/core/adapters" {
   interface AdapterUser {
     role?: UserRole;
     amazonSub?: string | null;
+    active?: boolean;
   }
 }
