@@ -164,7 +164,7 @@ model User {
   amazonAccessToken    String? // encrypted at application level
   amazonRefreshToken   String? // encrypted at application level
   amazonTokenExpiresAt DateTime?
-  emailVerified        Boolean?
+  emailVerified        DateTime?
   active               Boolean   @default(true)
   lastLoginAt          DateTime?
   createdAt            DateTime  @default(now())
