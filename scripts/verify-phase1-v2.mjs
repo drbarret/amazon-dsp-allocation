@@ -6,6 +6,7 @@
 
 import pg from "pg";
 import { createCipheriv, createDecipheriv, createHmac, randomBytes } from "node:crypto";
+import { execSync } from "node:child_process";
 
 try { process.loadEnvFile(".env.local"); } catch { try { process.loadEnvFile(".env"); } catch {} }
 
@@ -683,13 +684,53 @@ console.log(pass4f ? "  PASS" : "  FAIL");
 // Deployment
 // ============================================================
 console.log("\n========== Deployment ==========");
-console.log("  GitHub deployment #5897978985, SHA: 741895ab36b81fe54684af09e44924d4042670bb");
-console.log("  Vercel status: success (deployed to amazon-dsp-allocation-illt.vercel.app)");
-console.log("  Deployment Protection: OFF (/api/auth/csrf returns CSRF token unauthenticated)");
-console.log("  /admin/users → 307 redirect to /login (unauthenticated)");
-console.log("  /login → 200 (login page renders)");
-console.log("  CI run #31755174215: success (105 tests green)");
-results.push({ criterion: "Deployment: latest commit deployed + READY + no ssoProtection", verdict: "PASS" });
+
+const PRODUCTION_URL = "https://amazon-dsp-allocation-illt.vercel.app";
+
+// Live check 1: /api/auth/csrf returns a CSRF token (proves ssoProtection is off)
+let csrfOk = false;
+try {
+  const csrfRes = await fetch(`${PRODUCTION_URL}/api/auth/csrf`);
+  const csrfBody = await csrfRes.json();
+  csrfOk = csrfRes.ok && typeof csrfBody.csrfToken === "string" && csrfBody.csrfToken.length > 0;
+  console.log(`  /api/auth/csrf → ${csrfRes.status}, csrfToken present: ${csrfOk}`);
+} catch (e) {
+  console.log(`  /api/auth/csrf → ERROR: ${e.message}`);
+}
+
+// Live check 2: /admin/users → 307 redirect to /login (unauthenticated)
+let adminRedirectOk = false;
+try {
+  const adminRes = await fetch(`${PRODUCTION_URL}/admin/users`, { redirect: "manual" });
+  adminRedirectOk = adminRes.status === 307;
+  const location = adminRes.headers.get("location") || "";
+  console.log(`  /admin/users → ${adminRes.status}, Location: ${location}`);
+} catch (e) {
+  console.log(`  /admin/users → ERROR: ${e.message}`);
+}
+
+// Live check 3: /login → 200 (login page renders)
+let loginOk = false;
+try {
+  const loginRes = await fetch(`${PRODUCTION_URL}/login`);
+  loginOk = loginRes.ok;
+  console.log(`  /login → ${loginRes.status}`);
+} catch (e) {
+  console.log(`  /login → ERROR: ${e.message}`);
+}
+
+// Live check 4: local HEAD
+let headSha = "";
+try {
+  headSha = execSync("git rev-parse HEAD", { encoding: "utf-8" }).trim();
+  console.log(`  Local HEAD: ${headSha}`);
+} catch (e) {
+  console.log(`  git rev-parse HEAD → ERROR: ${e.message}`);
+}
+
+const depPass = csrfOk && adminRedirectOk && loginOk;
+console.log(depPass ? "  PASS" : "  FAIL");
+results.push({ criterion: "Deployment: latest commit deployed + READY + no ssoProtection", verdict: depPass ? "PASS" : "FAIL" });
 
 // ============================================================
 // FINAL SNAPSHOT

@@ -1,7 +1,7 @@
 # Phase 1 Verification Report (v3 — Final)
 
 **Date:** 2026-08-13
-**Commit:** `741895ab36b81fe54684af09e44924d4042670bb`
+**Commit:** `570695e` (HEAD at time of final report)
 **Production URL:** `https://amazon-dsp-allocation-illt.vercel.app`
 **Verifier:** Independent re-verification (step-5c)
 
@@ -39,7 +39,7 @@
 
 - **Runner:** Vitest 3.2.7 with `node` environment
 - **Config:** `vitest.config.ts` with `vite-tsconfig-paths` plugin
-- **Test files:** 6 files, 105 tests, all passing
+- **Test files:** 6 files, 114 tests, all passing
 
 ### Test Files
 
@@ -50,7 +50,7 @@
 | `src/lib/__tests__/onboarding.test.ts` | 23 | validateCpf (13), validatePhone (10) |
 | `src/lib/__tests__/access-control.test.ts` | 17 | isCorporateDomain (8), isPreRegistered (4), authorizeSignIn (5) |
 | `src/lib/__tests__/admin-actions.test.ts` | 21 | DRIVER/SUPERVISOR refused (10), ACCOUNT_MANAGER/ADMIN allowed (8), unauthenticated refused (3) |
-| `src/lib/__tests__/jwt-callback.test.ts` | 6 | freshness window (2), fail-closed (1), edge cases (3) |
+| `src/lib/__tests__/jwt-callback.test.ts` | 15 | freshness window (6), first-sign-in promotion (9) |
 
 ### Run Command
 
@@ -61,15 +61,15 @@ npx vitest run
 ### Output
 
 ```
-✓ src/lib/__tests__/jwt-callback.test.ts (6 tests) 8ms
-✓ src/lib/__tests__/access-control.test.ts (17 tests) 10ms
-✓ src/lib/__tests__/crypto.test.ts (12 tests) 11ms
-✓ src/lib/__tests__/authz.test.ts (26 tests) 11ms
-✓ src/lib/__tests__/admin-actions.test.ts (21 tests) 12ms
-✓ src/lib/__tests__/onboarding.test.ts (23 tests) 6ms
+✓ src/lib/__tests__/jwt-callback.test.ts (15 tests) 13ms
+✓ src/lib/__tests__/access-control.test.ts (17 tests) 8ms
+✓ src/lib/__tests__/crypto.test.ts (12 tests) 12ms
+✓ src/lib/__tests__/authz.test.ts (26 tests) 10ms
+✓ src/lib/__tests__/admin-actions.test.ts (21 tests) 14ms
+✓ src/lib/__tests__/onboarding.test.ts (23 tests) 9ms
 
 Test Files  6 passed (6)
-     Tests  105 passed (105)
+     Tests  114 passed (114)
 ```
 
 ### CI Workflow
@@ -110,15 +110,18 @@ SELECT id, email, role, active FROM "users" WHERE email = 'drbarret@gmail.com'
 
 **Verdict:** PASS
 
-#### 1b: Role freshness window (60s) + fail-closed
+#### 1b: Role freshness window (15s) + fail-closed
 
-The `jwt` callback was extracted into `src/lib/jwt-callback.ts` and tested directly via Vitest (`src/lib/__tests__/jwt-callback.test.ts`, 6 tests). The test mocks Prisma and drives the callback with fabricated tokens to prove all three behaviours:
+The `jwt` callback was extracted into `src/lib/jwt-callback.ts` and tested directly via Vitest (`src/lib/__tests__/jwt-callback.test.ts`, 15 tests). The test mocks Prisma and drives the callback with fabricated tokens to prove all behaviours:
 
-1. **Inside the 60s freshness window:** `roleLastFetched` is 30s ago → no DB read, token unchanged (role and active preserved).
-2. **Past the window:** `roleLastFetched` is 90s ago → DB is queried, role and active are updated from the DB row.
+1. **Inside the 15s freshness window:** `roleLastFetched` is 7s ago → no DB read, token unchanged (role and active preserved).
+2. **Past the window:** `roleLastFetched` is 20s ago → DB is queried, role and active are updated from the DB row.
 3. **User row missing:** DB returns null → `token.active = false` (fail-closed), role unchanged.
+4. **First-sign-in promotion (9 tests):** DRIVER promoted to SUPERVISOR/ACCOUNT_MANAGER/ADMIN via AllowedEmail, DRIVER stays DRIVER when no AllowedEmail or role=DRIVER, non-DRIVER skips AllowedEmail lookup, missing user row handled.
 
-Edge cases tested: no email on token (skips freshness check), exactly at the 60s boundary (no re-read, strict `>`), and 1ms past the boundary (triggers re-read).
+Edge cases tested: no email on token (skips freshness check), exactly at the 15s boundary (no re-read, strict `>`), and 1ms past the boundary (triggers re-read).
+
+**Revocation guarantee:** deactivation or demotion takes effect within **15 seconds** (see `docs/ENCRYPTION.md` for design rationale).
 
 **Verdict:** PASS
 

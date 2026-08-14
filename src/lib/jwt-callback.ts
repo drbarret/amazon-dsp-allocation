@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { UserRole } from "@/generated/prisma";
 
-export const ROLE_FRESHNESS_MS = 60_000; // 60 seconds
+export const ROLE_FRESHNESS_MS = 15_000; // 15 seconds
 
 export async function jwtCallback({ token, user, account }: {
   token: Record<string, unknown>;
