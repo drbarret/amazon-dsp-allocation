@@ -85,6 +85,43 @@ export function validatePhone(phone: string): { valid: boolean; normalized: stri
   return { valid: false, normalized };
 }
 
+/** The 8 cities a driver can choose as preferences. */
+export const ALLOWED_CITIES = [
+  "Jundiaí",
+  "Louveira",
+  "Várzea Paulista",
+  "Campo Limpo",
+  "Itupeva",
+  "Itatiba",
+  "Cabreúva",
+  "Vinhedo",
+] as const;
+
+export type AllowedCity = (typeof ALLOWED_CITIES)[number];
+
+/**
+ * Validate city preferences: 1-3 cities, no duplicates, all from the allowed list.
+ * Returns { valid: true } or { valid: false, error: "..." }.
+ */
+export function validateCityPreferences(cities: string[]): { valid: boolean; error?: string } {
+  if (!Array.isArray(cities) || cities.length < 1 || cities.length > 3) {
+    return { valid: false, error: "Selecione entre 1 e 3 cidades de preferência." };
+  }
+
+  const uniqueCities = new Set(cities);
+  if (uniqueCities.size !== cities.length) {
+    return { valid: false, error: "Não é permitido selecionar a mesma cidade mais de uma vez." };
+  }
+
+  for (const city of cities) {
+    if (!(ALLOWED_CITIES as readonly string[]).includes(city)) {
+      return { valid: false, error: `Cidade inválida: "${city}". Selecione uma das cidades disponíveis.` };
+    }
+  }
+
+  return { valid: true };
+}
+
 export interface OnboardingInput {
   cpf: string;
   phone: string;
@@ -92,6 +129,7 @@ export interface OnboardingInput {
   restrictionCodes: VehicleRestrictionCode[];
   transporterId: string;
   consentGiven: boolean;
+  cityPreferenceCities: string[];
 }
 
 export interface OnboardingResult {
@@ -123,7 +161,7 @@ export async function completeOnboarding(
   }
 
   // 3. Validate vehicle type
-  const validVehicleTypes: VehicleType[] = ["CARGO_VAN", "PASSEIO"];
+  const validVehicleTypes: VehicleType[] = ["CARGO_VAN", "LARGE_VAN", "PASSEIO"];
   if (!validVehicleTypes.includes(input.vehicleType)) {
     return { success: false, error: "Tipo de veículo inválido." };
   }
@@ -136,7 +174,14 @@ export async function completeOnboarding(
     };
   }
 
-  // 5. Check CPF uniqueness via blind index
+  // 5. Validate city preferences (1-3 from the 8 allowed cities)
+  const cities = input.cityPreferenceCities ?? [];
+  const cityValidation = validateCityPreferences(cities);
+  if (!cityValidation.valid) {
+    return { success: false, error: cityValidation.error! };
+  }
+
+  // 6. Check CPF uniqueness via blind index
   const blindIndex = computeCpfBlindIndex(cpfResult.normalized);
   const existing = await prisma.driverProfile.findUnique({
     where: { cpfBlindIndex: blindIndex },
@@ -148,11 +193,11 @@ export async function completeOnboarding(
     };
   }
 
-  // 6. Encrypt sensitive fields
+  // 7. Encrypt sensitive fields
   const encryptedCpf = encrypt(cpfResult.normalized);
   const encryptedPhone = encrypt(phoneResult.normalized);
 
-  // 7. Upsert driver profile
+  // 8. Upsert driver profile
   await prisma.driverProfile.upsert({
     where: { userId },
     create: {
@@ -167,6 +212,12 @@ export async function completeOnboarding(
       vehicleRestrictions: {
         create: input.restrictionCodes.map((code) => ({ code })),
       },
+      regionPreferences: {
+        create: cities.map((city, index) => ({
+          city,
+          priority: index + 1,
+        })),
+      },
     },
     update: {
       cpf: encryptedCpf,
@@ -180,10 +231,17 @@ export async function completeOnboarding(
         deleteMany: {},
         create: input.restrictionCodes.map((code) => ({ code })),
       },
+      regionPreferences: {
+        deleteMany: {},
+        create: cities.map((city, index) => ({
+          city,
+          priority: index + 1,
+        })),
+      },
     },
   });
 
-  // 8. Audit log (never store CPF)
+  // 9. Audit log (never store CPF)
   await writeAuditLog({
     eventType: "CONSENT_GIVEN",
     actorId: userId,
@@ -192,6 +250,7 @@ export async function completeOnboarding(
       action: "onboarding_completed",
       vehicleType: input.vehicleType,
       restrictionCount: input.restrictionCodes.length,
+      cityPreferenceCount: cities.length,
     },
   });
 

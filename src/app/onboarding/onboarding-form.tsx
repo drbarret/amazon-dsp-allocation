@@ -24,6 +24,19 @@ const RESTRICTION_LABELS: Record<string, string> = {
   CAPACIDADE_REDUZIDA: "Capacidade Reduzida",
 };
 
+const ALLOWED_CITIES = [
+  "Jundiaí",
+  "Louveira",
+  "Várzea Paulista",
+  "Campo Limpo",
+  "Itupeva",
+  "Itatiba",
+  "Cabreúva",
+  "Vinhedo",
+] as const;
+
+const MAX_CITIES = 3;
+
 interface Props {
   userName: string;
   userEmail: string;
@@ -33,6 +46,7 @@ export function OnboardingForm({ userName, userEmail }: Props) {
   const [vehicleType, setVehicleType] = useState("CARGO_VAN");
   const [restrictions, setRestrictions] = useState<Record<string, boolean>>({});
   const [consent, setConsent] = useState(false);
+  const [selectedCities, setSelectedCities] = useState<string[]>([]);
 
   const [state, formAction, isPending] = useActionState(
     async (_prev: { error?: string } | null, formData: FormData) => {
@@ -49,7 +63,19 @@ export function OnboardingForm({ userName, userEmail }: Props) {
     setRestrictions((prev) => ({ ...prev, [code]: !prev[code] }));
   };
 
-  const canSubmit = consent && !isPending;
+  const toggleCity = (city: string) => {
+    setSelectedCities((prev) => {
+      if (prev.includes(city)) {
+        return prev.filter((c) => c !== city);
+      }
+      if (prev.length >= MAX_CITIES) {
+        return prev;
+      }
+      return [...prev, city];
+    });
+  };
+
+  const canSubmit = consent && !isPending && selectedCities.length >= 1;
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 px-4 py-8">
@@ -147,6 +173,7 @@ export function OnboardingForm({ userName, userEmail }: Props) {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="CARGO_VAN">Cargo Van</SelectItem>
+                  <SelectItem value="LARGE_VAN">Large Van</SelectItem>
                   <SelectItem value="PASSEIO">Veículo de Passeio</SelectItem>
                 </SelectContent>
               </Select>
@@ -171,6 +198,42 @@ export function OnboardingForm({ userName, userEmail }: Props) {
                   </label>
                 ))}
               </div>
+            </div>
+
+            {/* City Preferences */}
+            <div className="space-y-2">
+              <Label>Cidades de preferência (escolha de 1 a 3)</Label>
+              <div className="space-y-2 rounded-lg border p-3">
+                {ALLOWED_CITIES.map((city) => {
+                  const isChecked = selectedCities.includes(city);
+                  const isDisabled = !isChecked && selectedCities.length >= MAX_CITIES;
+                  return (
+                    <label
+                      key={city}
+                      className={`flex cursor-pointer items-center gap-2 text-sm ${
+                        isDisabled ? "cursor-not-allowed opacity-50" : ""
+                      }`}
+                    >
+                      <Checkbox
+                        checked={isChecked}
+                        disabled={isDisabled}
+                        onCheckedChange={() => toggleCity(city)}
+                      />
+                      {city}
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {selectedCities.length === 0
+                  ? "Selecione pelo menos 1 cidade."
+                  : `${selectedCities.length} de ${MAX_CITIES} cidades selecionadas.`}
+              </p>
+              <input
+                type="hidden"
+                name="cityPreferences"
+                value={selectedCities.join(",")}
+              />
             </div>
 
             {/* LGPD Consent */}

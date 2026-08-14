@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateCpf, validatePhone } from "@/lib/onboarding";
+import { validateCpf, validatePhone, validateCityPreferences, ALLOWED_CITIES } from "@/lib/onboarding";
 
 // ---------------------------------------------------------------------------
 // validateCpf — pure function, no mocking needed
@@ -145,5 +145,122 @@ describe("validatePhone", () => {
     const result = validatePhone("");
     expect(result.valid).toBe(false);
     expect(result.normalized).toBe("");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateCityPreferences — pure function, no mocking needed
+// ---------------------------------------------------------------------------
+
+describe("validateCityPreferences", () => {
+  it("accepts 1 city", () => {
+    const result = validateCityPreferences(["Jundiaí"]);
+    expect(result.valid).toBe(true);
+  });
+
+  it("accepts 2 cities", () => {
+    const result = validateCityPreferences(["Jundiaí", "Louveira"]);
+    expect(result.valid).toBe(true);
+  });
+
+  it("accepts 3 cities", () => {
+    const result = validateCityPreferences(["Jundiaí", "Louveira", "Várzea Paulista"]);
+    expect(result.valid).toBe(true);
+  });
+
+  it("rejects 0 cities (empty array)", () => {
+    const result = validateCityPreferences([]);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("1 e 3");
+  });
+
+  it("rejects 4 cities", () => {
+    const result = validateCityPreferences([
+      "Jundiaí",
+      "Louveira",
+      "Várzea Paulista",
+      "Campo Limpo",
+    ]);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("1 e 3");
+  });
+
+  it("rejects 5 cities", () => {
+    const result = validateCityPreferences([
+      "Jundiaí",
+      "Louveira",
+      "Várzea Paulista",
+      "Campo Limpo",
+      "Itupeva",
+    ]);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("1 e 3");
+  });
+
+  it("rejects duplicate cities", () => {
+    const result = validateCityPreferences(["Jundiaí", "Jundiaí"]);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("mesma cidade");
+  });
+
+  it("rejects city not in allowed list", () => {
+    const result = validateCityPreferences(["São Paulo"]);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("Cidade inválida");
+    expect(result.error).toContain("São Paulo");
+  });
+
+  it("rejects arbitrary string not in allowed list", () => {
+    const result = validateCityPreferences(["XyzAbc"]);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("Cidade inválida");
+  });
+
+  it("rejects mix of valid and invalid cities", () => {
+    const result = validateCityPreferences(["Jundiaí", "São Paulo"]);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("São Paulo");
+  });
+
+  it("all 8 cities are in ALLOWED_CITIES constant", () => {
+    const expected = [
+      "Jundiaí",
+      "Louveira",
+      "Várzea Paulista",
+      "Campo Limpo",
+      "Itupeva",
+      "Itatiba",
+      "Cabreúva",
+      "Vinhedo",
+    ];
+    expect(ALLOWED_CITIES).toEqual(expected);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Vehicle type validation — the valid set is CARGO_VAN, LARGE_VAN, PASSEIO
+// ---------------------------------------------------------------------------
+
+describe("VehicleType validation", () => {
+  const validVehicleTypes = ["CARGO_VAN", "LARGE_VAN", "PASSEIO"] as const;
+
+  it("CARGO_VAN is valid", () => {
+    expect(validVehicleTypes.includes("CARGO_VAN")).toBe(true);
+  });
+
+  it("LARGE_VAN is valid", () => {
+    expect(validVehicleTypes.includes("LARGE_VAN")).toBe(true);
+  });
+
+  it("PASSEIO is valid", () => {
+    expect(validVehicleTypes.includes("PASSEIO")).toBe(true);
+  });
+
+  it("unknown value is rejected", () => {
+    expect(validVehicleTypes.includes("MOTORCYCLE" as never)).toBe(false);
+  });
+
+  it("empty string is rejected", () => {
+    expect(validVehicleTypes.includes("" as never)).toBe(false);
   });
 });

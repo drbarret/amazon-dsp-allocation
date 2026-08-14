@@ -47,6 +47,7 @@ enum AvailabilityAnswer {
 
 enum VehicleType {
   CARGO_VAN
+  LARGE_VAN
   PASSEIO
 }
 

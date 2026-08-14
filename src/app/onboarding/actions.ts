@@ -30,6 +30,13 @@ export async function submitOnboarding(formData: FormData) {
     }
   }
 
+  // Parse city preferences (1-3 cities, comma-separated in order)
+  const cityPreferencesRaw = (formData.get("cityPreferences") as string) ?? "";
+  const cityPreferenceCities = cityPreferencesRaw
+    .split(",")
+    .map((c) => c.trim())
+    .filter((c) => c.length > 0);
+
   const result = await completeOnboarding(session.user.id, {
     cpf,
     phone,
@@ -37,6 +44,7 @@ export async function submitOnboarding(formData: FormData) {
     restrictionCodes,
     transporterId,
     consentGiven,
+    cityPreferenceCities,
   });
 
   if (!result.success) {
