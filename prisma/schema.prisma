@@ -120,6 +120,7 @@ enum AuditEventType {
   MANUAL_OVERRIDE
   CONSENT_GIVEN
   CONSENT_REVOKED
+  VEHICLE_RESTRICTION_UPDATED
 }
 
 // ---------- Core Entities ----------

@@ -757,6 +757,7 @@ sequenceDiagram
 | A-DM-06 | CPF and phone are encrypted at the application level before persistence. |
 | A-DM-07 | A transport company can operate multiple regions; each region has independent vacancy programs but shared drivers. |
 | A-DM-08 | Manual schedule edits are allowed until the schedule is published and WhatsApp messages are sent, after which cells become locked unless a supervisor records an exception. |
+| A-DM-09 | `VehicleRestrictionCode.GNV` (and the legacy `NATURAL_GAS`) indicates a Natural Gas Vehicle with reduced cargo volume. This is allocation-relevant data: GNV drivers can only be assigned to "Inside Natural Gas" vacancy categories, which have smaller capacity. Supervisors (and above) can set or clear this marking on any driver. |
 
 ### 7.2 Open Questions
 
