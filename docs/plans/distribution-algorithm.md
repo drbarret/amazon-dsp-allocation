@@ -36,7 +36,7 @@
 | `WeeklyAvailability` | Respostas de disponibilidade por motorista, dia e ciclo (`SIM`, `NAO`, `CICLO_2`). |
 | `VacancyProgram` | Vagas publicadas por região, dia, ciclo e categoria de veículo (`quantity`). |
 | `DriverProfile` | Atributos do motorista: `vehicleType`, `transporterId`, restrições e preferências. |
-| `VehicleRestriction` | Restrições/capacidades (`GNV`, `REFRIGERADOR`, `CAPACIDADE_REDUZIDA`, `NATURAL_GAS`). |
+| `VehicleRestriction` | Restrições/capacidades (`GNV` [canonical], `REFRIGERADOR`, `CAPACIDADE_REDUZIDA`). `NATURAL_GAS` is a legacy duplicate of `GNV` retained for historical data only. |
 | `RegionCityPreference` | Preferência de região/cidade/base do motorista. |
 | `DriverScore` | Scorecard importado: `classification`, `dnrDpmo`, `dcr`, `contactCompliance`, `scanCompliance`, etc. |
 | `FavoriteDriver` | Flag de favorito da semana (`isFavorite`, `source`). |
@@ -162,7 +162,7 @@ FUNCTION AssignVacancies():
 
 **`VehicleCompatible(driver, vehicleCategory)`:**
 - Se categoria contém "Passenger" / "Passeio": `DriverProfile.vehicleType == PASSEIO`.
-- Se categoria contém "Natural Gas" / "GNV": driver deve ter `VehicleRestriction` `NATURAL_GAS` ou `GNV`.
+- Se categoria contém "Natural Gas" / "GNV": driver deve ter `VehicleRestriction` `GNV` (canonical). `NATURAL_GAS` is a legacy duplicate checked only for backward compatibility with historical data.
 - Se categoria contém "Refrigerado" / "Fridge": driver deve ter `REFRIGERADOR`.
 - Se categoria contém capacidade reduzida: driver deve ter `CAPACIDADE_REDUZIDA`.
 - Demais categorias: qualquer motorista `CARGO_VAN` ou `PASSEIO` conforme normalização.

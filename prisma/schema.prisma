@@ -54,7 +54,7 @@ enum VehicleRestrictionCode {
   GNV
   REFRIGERADOR
   CAPACIDADE_REDUZIDA
-  NATURAL_GAS
+  NATURAL_GAS // @deprecated — legacy duplicate of GNV; retained for historical data, not writable
 }
 
 enum VacancyStatus {

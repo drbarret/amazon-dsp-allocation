@@ -275,4 +275,50 @@ describe("setDriverGnvMarking — authorization gate", () => {
       );
     });
   });
+
+  // -----------------------------------------------------------------------
+  // Prove NATURAL_GAS is never written — only GNV is canonical
+  // -----------------------------------------------------------------------
+  describe("canonical code enforcement", () => {
+    beforeEach(() => {
+      mockAuth.mockResolvedValue(sessionWithRole("SUPERVISOR"));
+    });
+
+    it("setDriverGnvMarking creates only GNV, never NATURAL_GAS", async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(driverTargetNoGnv);
+      mockPrisma.vehicleRestriction.create.mockResolvedValue({});
+      mockPrisma.vehicleRestriction.findMany.mockResolvedValue([{ code: "GNV" }]);
+
+      await setDriverGnvMarking("driver-1", true);
+
+      // The create call must use GNV, not NATURAL_GAS
+      const createCalls = mockPrisma.vehicleRestriction.create.mock.calls;
+      expect(createCalls.length).toBe(1);
+      expect(createCalls[0][0].data.code).toBe("GNV");
+    });
+
+    it("setDriverGnvMarking deletes both codes for cleanup but only creates GNV", async () => {
+      // Driver has NATURAL_GAS (legacy) — supervisor clears it
+      const driverWithLegacyGas = {
+        id: "driver-3",
+        role: "DRIVER",
+        driverProfile: {
+          id: "dp-3",
+          vehicleRestrictions: [{ id: "vr-2", code: "NATURAL_GAS" }],
+        },
+      };
+      mockPrisma.user.findUnique.mockResolvedValue(driverWithLegacyGas);
+      mockPrisma.vehicleRestriction.deleteMany.mockResolvedValue({ count: 1 });
+      mockPrisma.vehicleRestriction.findMany.mockResolvedValue([]);
+
+      const result = await setDriverGnvMarking("driver-3", false);
+      expect(result).toEqual({ success: true });
+
+      // deleteMany should cover both codes for cleanup
+      const deleteCalls = mockPrisma.vehicleRestriction.deleteMany.mock.calls;
+      expect(deleteCalls.length).toBe(1);
+      expect(deleteCalls[0][0].where.code.in).toContain("GNV");
+      expect(deleteCalls[0][0].where.code.in).toContain("NATURAL_GAS");
+    });
+  });
 });

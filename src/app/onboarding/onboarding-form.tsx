@@ -22,7 +22,6 @@ const RESTRICTION_LABELS: Record<string, string> = {
   GNV: "GNV (Gás Natural Veicular)",
   REFRIGERADOR: "Refrigerador / Baú Térmico",
   CAPACIDADE_REDUZIDA: "Capacidade Reduzida",
-  NATURAL_GAS: "Gás Natural",
 };
 
 interface Props {

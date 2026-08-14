@@ -23,7 +23,6 @@ export async function submitOnboarding(formData: FormData) {
     "GNV",
     "REFRIGERADOR",
     "CAPACIDADE_REDUZIDA",
-    "NATURAL_GAS",
   ];
   for (const code of validCodes) {
     if (formData.get(`restriction_${code}`) === "on") {

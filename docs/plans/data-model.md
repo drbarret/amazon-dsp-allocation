@@ -120,10 +120,10 @@ enum VehicleType {
 }
 
 enum VehicleRestrictionCode {
-  GNV              // kit gás / GNV
+  GNV              // kit gás / GNV (canonical)
   REFRIGERADOR     // refrigerated
   CAPACIDADE_REDUZIDA
-  NATURAL_GAS      // Inside Natural Gas category
+  NATURAL_GAS      // @deprecated — legacy duplicate of GNV; retained for historical data only, not writable
 }
 
 enum VacancyStatus {
@@ -757,7 +757,7 @@ sequenceDiagram
 | A-DM-06 | CPF and phone are encrypted at the application level before persistence. |
 | A-DM-07 | A transport company can operate multiple regions; each region has independent vacancy programs but shared drivers. |
 | A-DM-08 | Manual schedule edits are allowed until the schedule is published and WhatsApp messages are sent, after which cells become locked unless a supervisor records an exception. |
-| A-DM-09 | `VehicleRestrictionCode.GNV` (and the legacy `NATURAL_GAS`) indicates a Natural Gas Vehicle with reduced cargo volume. This is allocation-relevant data: GNV drivers can only be assigned to "Inside Natural Gas" vacancy categories, which have smaller capacity. Supervisors (and above) can set or clear this marking on any driver. |
+| A-DM-09 | `VehicleRestrictionCode.GNV` is the canonical code for Natural Gas Vehicles with reduced cargo volume. `NATURAL_GAS` is a legacy duplicate retained only for historical data; it is not writable through any path (onboarding, supervisor screen, or scripts). GNV drivers can only be assigned to "Inside Natural Gas" vacancy categories, which have smaller capacity. Supervisors (and above) can set or clear this marking on any driver. |
 
 ### 7.2 Open Questions
 
