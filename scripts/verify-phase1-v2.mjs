@@ -1,4 +1,12 @@
 #!/usr/bin/env node
+// ============================================================
+// HISTÓRICO — Este script é obsoleto e NÃO deve ser executado.
+// Ele referencia ALLOWED_DOMAINS (mecanismo removido) e o modelo
+// híbrido de acesso que não existe mais. A verificação atual está
+// em docs/PHASE1.6-VERIFICATION.md.
+//
+// Mantido apenas para referência histórica do projeto.
+// ============================================================
 // Phase 1 Re-verification v2 — exercises every criterion with real DB output.
 // Every PASS must be backed by command output pasted into the report.
 // Restores DB state after each test. Fails loudly if row counts don't match.

@@ -109,7 +109,7 @@ graph TD
   - Token: `https://api.amazon.com/auth/o2/token`
   - User Profile: `https://api.amazon.com/user/profile`
   - Scope: `profile`
-- **Domain restriction:** Post-login middleware checks the e-mail domain against an allow-list (`@instalog.com.br` plus approved Amazon corporate domains). Unauthorized domains are blocked with a clear message.
+- **Domain restriction:** ~~Post-login middleware checks the e-mail domain against an allow-list (`@instalog.com.br` plus approved Amazon corporate domains). Unauthorized domains are blocked with a clear message.~~ **SUPERSEDED (2026-08-14):** O modelo de domínio corporativo foi substituído por uma lista fechada de e-mails pré-registrados (`allowed_emails`). Não há mais aprovação automática por domínio. Ver `docs/INFRA.md` para o modelo atual.
 - **Role-based access control (RBAC):** Three roles mapped to requirements:
   - `DRIVER` — own data only (default role on first login).
   - `SUPERVISOR` — all schedules, drivers, and operational config.

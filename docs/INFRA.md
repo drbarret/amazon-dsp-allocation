@@ -42,7 +42,6 @@ Variáveis já configuradas:
 - `AUTH_URL` — Production, Preview, Development
 - `FIELD_ENCRYPTION_KEY` — Production, Preview, Development
 - `FIELD_BLIND_INDEX_KEY` — Production, Preview, Development
-- `ALLOWED_DOMAINS` — Production, Preview, Development
 
 Variáveis pendentes:
 
@@ -156,23 +155,13 @@ O `postinstall` no `package.json` executa `prisma generate`, garantindo que o Ve
 
 **Modelo de dados:** As tabelas `accounts`, `sessions` e `verification_tokens` foram adicionadas ao schema Prisma para suportar o adapter de banco de dados do Auth.js.
 
-## Controle de acesso (modelo híbrido)
+## Controle de acesso (lista fechada)
 
-O sistema usa um modelo híbrido de controle de acesso para login:
+O sistema usa uma lista fechada de e-mails pré-registrados para controle de acesso:
 
-1. **Domínio corporativo auto-aprovado:** qualquer e-mail em um domínio permitido (configurado em `ALLOWED_DOMAINS`) faz login automaticamente.
-2. **Pré-registro:** e-mails fora dos domínios corporativos precisam ser cadastrados na tabela `allowed_emails` por um administrador antes de poderem fazer login.
-3. **Usuário desativado:** um usuário com `active = false` ou `AllowedEmail.status = 'REVOKED'` é recusado em qualquer ponto.
-
-### Como adicionar um domínio permitido
-
-Defina a variável de ambiente `ALLOWED_DOMAINS` como uma lista separada por vírgulas:
-
-```
-ALLOWED_DOMAINS=instalog.com.br,amazon.com.br,outrodominio.com
-```
-
-O valor padrão (se a variável não estiver definida) é `instalog.com.br`.
+1. **Pré-registro:** apenas e-mails cadastrados na tabela `allowed_emails` com status `ACTIVE` podem fazer login.
+2. **Usuário desativado:** um usuário com `active = false` ou `AllowedEmail.status = 'REVOKED'` é recusado em qualquer ponto.
+3. **Sem bypass por domínio:** não há aprovação automática por domínio corporativo. Todo acesso é individual e explícito.
 
 ### Como pré-registrar um e-mail
 

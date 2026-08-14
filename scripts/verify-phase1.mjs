@@ -1,4 +1,12 @@
 #!/usr/bin/env node
+// ============================================================
+// HISTÓRICO — Este script é obsoleto e NÃO deve ser executado.
+// Ele referencia ALLOWED_DOMAINS (mecanismo removido) e o modelo
+// híbrido de acesso que não existe mais. A verificação atual está
+// em docs/PHASE1.6-VERIFICATION.md.
+//
+// Mantido apenas para referência histórica do projeto.
+// ============================================================
 // Part B: Independent re-verification of ALL Phase 1 acceptance criteria
 // Runs against the REAL production DB. Restores state after each test.
 // Usage: node scripts/verify-phase1.mjs

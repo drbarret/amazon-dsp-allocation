@@ -1,5 +1,7 @@
 # Phase 1 — Independent Audit Report
 
+> **NOTA (2026-08-14):** Este documento é histórico. Ele descreve o modelo híbrido de acesso (domínio corporativo + pré-registro) que foi substituído por uma lista fechada. O modelo atual está documentado em `docs/INFRA.md`.
+
 **Auditor:** Independent (not the worker who wrote the code or the verification report)
 **Date:** 2026-08-13
 **Scope:** `docs/PHASE1-VERIFICATION.md` v3 (claiming 17 PASS / 0 FAIL / 0 NOT VERIFIED)
