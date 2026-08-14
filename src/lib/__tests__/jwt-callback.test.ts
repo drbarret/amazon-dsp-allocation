@@ -210,6 +210,7 @@ describe("First-sign-in role promotion (account.provider === 'amazon')", () => {
     });
     mockPrisma.allowedEmail.findUnique.mockResolvedValue({
       role: "SUPERVISOR",
+      status: "ACTIVE",
     });
     mockPrisma.user.update.mockResolvedValue({});
 
@@ -239,6 +240,7 @@ describe("First-sign-in role promotion (account.provider === 'amazon')", () => {
     });
     mockPrisma.allowedEmail.findUnique.mockResolvedValue({
       role: "ACCOUNT_MANAGER",
+      status: "ACTIVE",
     });
     mockPrisma.user.update.mockResolvedValue({});
 
@@ -265,6 +267,7 @@ describe("First-sign-in role promotion (account.provider === 'amazon')", () => {
     });
     mockPrisma.allowedEmail.findUnique.mockResolvedValue({
       role: "ADMIN",
+      status: "ACTIVE",
     });
     mockPrisma.user.update.mockResolvedValue({});
 
@@ -313,6 +316,7 @@ describe("First-sign-in role promotion (account.provider === 'amazon')", () => {
     });
     mockPrisma.allowedEmail.findUnique.mockResolvedValue({
       role: "DRIVER",
+      status: "ACTIVE",
     });
 
     const result = await jwtCallback({
@@ -326,28 +330,28 @@ describe("First-sign-in role promotion (account.provider === 'amazon')", () => {
   });
 
   // -----------------------------------------------------------------------
-  // REVOKED AllowedEmail: code does not check status, only role
+  // REVOKED AllowedEmail: must NOT promote — status is checked
   // -----------------------------------------------------------------------
-  it("promotes DRIVER even when AllowedEmail is REVOKED (status not checked)", async () => {
+  it("does NOT promote DRIVER when AllowedEmail is REVOKED", async () => {
     mockPrisma.user.findUnique.mockResolvedValue({
       role: "DRIVER",
       amazonSub: "amzn-revoked",
       active: true,
     });
-    // AllowedEmail exists with SUPERVISOR role — select only includes { role }
-    // so status is not available to the callback
+    // AllowedEmail exists with SUPERVISOR role but REVOKED status
     mockPrisma.allowedEmail.findUnique.mockResolvedValue({
       role: "SUPERVISOR",
+      status: "REVOKED",
     });
-    mockPrisma.user.update.mockResolvedValue({});
 
     const result = await jwtCallback({
       token: { ...baseToken },
       account: amazonAccount,
     });
 
-    // Current behavior: promotes based on role alone, ignoring status
-    expect(result.role).toBe("SUPERVISOR");
+    // Must NOT promote — REVOKED means the privilege is withdrawn
+    expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    expect(result.role).toBe("DRIVER");
   });
 
   // -----------------------------------------------------------------------

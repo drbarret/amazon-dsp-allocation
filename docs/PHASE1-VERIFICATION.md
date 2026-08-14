@@ -409,6 +409,8 @@ With only 1 active ADMIN (`drbarret@gmail.com`), all three guardrails fire corre
 
 3. **The "2 ADMINs" bug in the original report:** The original `verify-phase1.mjs` script created a test actor with `role = 'ADMIN'` before counting active ADMINs, inflating the count from 1 to 2. The v2 script (`verify-phase1-v2.mjs`) counts ADMINs before creating any test data and uses `assertCountsMatch()` to fail loudly (exit code 1) if any table's row count does not match the initial snapshot after each test block.
 
+4. **step-5f: REVOKED invites were not ignored during role promotion (FIXED).** The `jwt` callback in `src/lib/jwt-callback.ts:23-27` looked up `AllowedEmail` on first sign-in and promoted the user to `allowedEmail.role` without checking `allowedEmail.status`. An admin could revoke a staff invite via `revokeInvite`, but the revoked user would still be promoted to the elevated role on next sign-in because the corporate-domain rule (`ALLOWED_DOMAINS`) let them in, and the jwt callback only checked `role`, not `status`. Fixed by adding `status` to the `select` and requiring `status === "ACTIVE"` before promotion. The test at line 331 was replaced: it previously codified the bug ("promotes DRIVER even when AllowedEmail is REVOKED"), now it asserts the correct behavior ("does NOT promote DRIVER when AllowedEmail is REVOKED"). No other unfiltered `AllowedEmail` reads were found — `access-control.ts:37` already filters on `status`, `admin/users/actions.ts` checks status explicitly, and `admin/users/page.tsx` is display-only.
+
 ---
 
 ## Files Changed

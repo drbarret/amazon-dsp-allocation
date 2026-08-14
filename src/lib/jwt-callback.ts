@@ -22,9 +22,9 @@ export async function jwtCallback({ token, user, account }: {
       if (dbUser.role === "DRIVER") {
         const allowedEmail = await prisma.allowedEmail.findUnique({
           where: { email: token.email as string },
-          select: { role: true },
+          select: { role: true, status: true },
         });
-        if (allowedEmail && allowedEmail.role !== "DRIVER") {
+        if (allowedEmail && allowedEmail.status === "ACTIVE" && allowedEmail.role !== "DRIVER") {
           await prisma.user.update({
             where: { email: token.email as string },
             data: { role: allowedEmail.role },
