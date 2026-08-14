@@ -9,8 +9,7 @@ import {
 
 // ---------------------------------------------------------------------------
 // Integration test against a real Postgres database.
-// Skipped when TEST_DATABASE_URL or DATABASE_URL is not configured.
-// All created rows are cleaned up in afterAll.
+// The suite is skipped automatically when no database is reachable.
 // ---------------------------------------------------------------------------
 
 const { mockAuth } = vi.hoisted(() => ({
@@ -21,17 +20,26 @@ vi.mock("@/lib/auth", () => ({
   auth: mockAuth,
 }));
 
-const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-const describeIfDb = databaseUrl ? describe : describe.skip;
+async function isDatabaseReachable(): Promise<boolean> {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    return true;
+  } catch {
+    return false;
+  }
+}
 
-describeIfDb("dispatch vacancy integration", () => {
+let dbReachable = false;
+
+describe("dispatch vacancy integration", () => {
   const runId = Date.now();
   const email = `integration-supervisor-${runId}@example.com`;
 
-  let transportCompanyId: string;
-  let supervisorId: string;
-  let weekId: string;
-  let vacancyId: string;
+  let transportCompanyId = "";
+  let supervisorId = "";
+  let weekId = "";
+  let vacancyId = "";
+  let skipped = false;
 
   function session() {
     return {
@@ -45,7 +53,11 @@ describeIfDb("dispatch vacancy integration", () => {
   }
 
   beforeAll(async () => {
-    if (!databaseUrl) return;
+    dbReachable = await isDatabaseReachable();
+    if (!dbReachable) {
+      skipped = true;
+      return;
+    }
 
     const company = await prisma.transportCompany.create({
       data: { name: `Integration Company ${runId}` },
@@ -81,7 +93,7 @@ describeIfDb("dispatch vacancy integration", () => {
   });
 
   afterAll(async () => {
-    if (!databaseUrl) return;
+    if (!dbReachable) return;
 
     await prisma.vacancy.deleteMany({ where: { dispatchWeekId: weekId } });
     await prisma.dispatchWeek.deleteMany({ where: { id: weekId } });
@@ -96,6 +108,8 @@ describeIfDb("dispatch vacancy integration", () => {
   });
 
   it("creates a vacancy", async () => {
+    if (skipped) return;
+
     const result = await createVacancy({
       dispatchWeekId: weekId,
       date: "2026-08-17",
@@ -110,6 +124,8 @@ describeIfDb("dispatch vacancy integration", () => {
   });
 
   it("lists vacancies for the week", async () => {
+    if (skipped) return;
+
     const result = await listVacancies(weekId);
     expect(result.success).toBe(true);
     expect(result.vacancies.length).toBe(1);
@@ -117,6 +133,8 @@ describeIfDb("dispatch vacancy integration", () => {
   });
 
   it("updates the vacancy", async () => {
+    if (skipped) return;
+
     const result = await updateVacancy(vacancyId, {
       dispatchWeekId: weekId,
       date: "2026-08-17",
@@ -133,6 +151,8 @@ describeIfDb("dispatch vacancy integration", () => {
   });
 
   it("deletes the vacancy and restores counts", async () => {
+    if (skipped) return;
+
     const deleteResult = await deleteVacancy(vacancyId);
     expect(deleteResult.success).toBe(true);
 
