@@ -1,52 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { isCorporateDomain } from "@/lib/access-control";
-
-// ---------------------------------------------------------------------------
-// isCorporateDomain — pure function (reads ALLOWED_DOMAINS env var)
-// ---------------------------------------------------------------------------
-
-describe("isCorporateDomain", () => {
-  beforeEach(() => {
-    delete process.env.ALLOWED_DOMAINS;
-  });
-
-  it("allows instalog.com.br (default domain)", () => {
-    expect(isCorporateDomain("user@instalog.com.br")).toBe(true);
-  });
-
-  it("allows INSTALOG.COM.BR (case insensitive)", () => {
-    expect(isCorporateDomain("user@INSTALOG.COM.BR")).toBe(true);
-  });
-
-  it("allows subaddress with +", () => {
-    expect(isCorporateDomain("user+tag@instalog.com.br")).toBe(true);
-  });
-
-  it("refuses unknown domain", () => {
-    expect(isCorporateDomain("user@gmail.com")).toBe(false);
-  });
-
-  it("refuses email without domain", () => {
-    expect(isCorporateDomain("no-at-sign")).toBe(false);
-  });
-
-  it("refuses empty string", () => {
-    expect(isCorporateDomain("")).toBe(false);
-  });
-
-  it("respects ALLOWED_DOMAINS env var", () => {
-    process.env.ALLOWED_DOMAINS = "instalog.com.br,amazon.com.br";
-    expect(isCorporateDomain("user@instalog.com.br")).toBe(true);
-    expect(isCorporateDomain("user@amazon.com.br")).toBe(true);
-    expect(isCorporateDomain("user@gmail.com")).toBe(false);
-  });
-
-  it("handles whitespace in ALLOWED_DOMAINS", () => {
-    process.env.ALLOWED_DOMAINS = " instalog.com.br , amazon.com.br ";
-    expect(isCorporateDomain("user@instalog.com.br")).toBe(true);
-    expect(isCorporateDomain("user@amazon.com.br")).toBe(true);
-  });
-});
 
 // ---------------------------------------------------------------------------
 // authorizeSignIn / isPreRegistered — mock prisma
@@ -68,7 +20,6 @@ const { authorizeSignIn, isPreRegistered } = await import("@/lib/access-control"
 
 beforeEach(() => {
   vi.clearAllMocks();
-  delete process.env.ALLOWED_DOMAINS;
 });
 
 describe("isPreRegistered", () => {
@@ -106,12 +57,10 @@ describe("isPreRegistered", () => {
 });
 
 describe("authorizeSignIn", () => {
-  it("allows corporate domain email", async () => {
-    const result = await authorizeSignIn("user@instalog.com.br");
-    expect(result.allowed).toBe(true);
-  });
-
-  it("allows pre-registered email (non-corporate domain)", async () => {
+  // -----------------------------------------------------------------------
+  // Pre-registered ACTIVE → allowed
+  // -----------------------------------------------------------------------
+  it("allows pre-registered ACTIVE email (owner)", async () => {
     mockFindUnique.mockResolvedValue({
       id: "1", email: "drbarret@gmail.com", role: "ADMIN", status: "ACTIVE",
     });
@@ -119,7 +68,52 @@ describe("authorizeSignIn", () => {
     expect(result.allowed).toBe(true);
   });
 
-  it("refuses unknown domain email that is not pre-registered", async () => {
+  it("allows pre-registered ACTIVE corporate email (staff)", async () => {
+    mockFindUnique.mockResolvedValue({
+      id: "2", email: "gustavo.alves@instalog.com.br", role: "SUPERVISOR", status: "ACTIVE",
+    });
+    const result = await authorizeSignIn("gustavo.alves@instalog.com.br");
+    expect(result.allowed).toBe(true);
+  });
+
+  it("allows pre-registered ACTIVE non-corporate email", async () => {
+    mockFindUnique.mockResolvedValue({
+      id: "3", email: "partner@other-company.com", role: "DRIVER", status: "ACTIVE",
+    });
+    const result = await authorizeSignIn("partner@other-company.com");
+    expect(result.allowed).toBe(true);
+  });
+
+  // -----------------------------------------------------------------------
+  // Corporate domain but absent from the list → refused
+  // -----------------------------------------------------------------------
+  it("refuses corporate-domain email NOT on the pre-registered list", async () => {
+    mockFindUnique.mockResolvedValue(null);
+    const result = await authorizeSignIn("unknown@instalog.com.br");
+    expect(result.allowed).toBe(false);
+    if (!result.allowed) {
+      expect(result.reason).toBe("EMAIL_NOT_AUTHORIZED");
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // REVOKED → refused
+  // -----------------------------------------------------------------------
+  it("refuses REVOKED pre-registered email", async () => {
+    mockFindUnique.mockResolvedValue({
+      id: "4", email: "revoked@instalog.com.br", role: "DRIVER", status: "REVOKED",
+    });
+    const result = await authorizeSignIn("revoked@instalog.com.br");
+    expect(result.allowed).toBe(false);
+    if (!result.allowed) {
+      expect(result.reason).toBe("EMAIL_NOT_AUTHORIZED");
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // External (unknown domain, not pre-registered) → refused
+  // -----------------------------------------------------------------------
+  it("refuses external email not pre-registered", async () => {
     mockFindUnique.mockResolvedValue(null);
     const result = await authorizeSignIn("stranger@gmail.com");
     expect(result.allowed).toBe(false);
@@ -128,24 +122,26 @@ describe("authorizeSignIn", () => {
     }
   });
 
-  it("refuses REVOKED pre-registered email (non-corporate domain)", async () => {
+  // -----------------------------------------------------------------------
+  // Owner → allowed (explicit test)
+  // -----------------------------------------------------------------------
+  it("allows owner (drbarret@gmail.com) when ACTIVE in AllowedEmail", async () => {
     mockFindUnique.mockResolvedValue({
-      id: "1", email: "revoked@gmail.com", role: "DRIVER", status: "REVOKED",
+      id: "owner", email: "drbarret@gmail.com", role: "ADMIN", status: "ACTIVE",
     });
-    const result = await authorizeSignIn("revoked@gmail.com");
+    const result = await authorizeSignIn("drbarret@gmail.com");
+    expect(result.allowed).toBe(true);
+  });
+
+  // -----------------------------------------------------------------------
+  // Owner row missing → refused (loud failure)
+  // -----------------------------------------------------------------------
+  it("refuses owner if AllowedEmail row is missing (loud failure mode)", async () => {
+    mockFindUnique.mockResolvedValue(null);
+    const result = await authorizeSignIn("drbarret@gmail.com");
     expect(result.allowed).toBe(false);
     if (!result.allowed) {
       expect(result.reason).toBe("EMAIL_NOT_AUTHORIZED");
     }
-  });
-
-  it("corporate domain bypasses REVOKED status (owner cannot be locked out)", async () => {
-    // Even if there's a REVOKED AllowedEmail row, corporate domain still wins
-    mockFindUnique.mockResolvedValue({
-      id: "1", email: "user@instalog.com.br", role: "DRIVER", status: "REVOKED",
-    });
-    const result = await authorizeSignIn("user@instalog.com.br");
-    // Corporate domain check happens first, so it returns allowed before checking pre-registered
-    expect(result.allowed).toBe(true);
   });
 });

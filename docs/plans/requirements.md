@@ -37,7 +37,7 @@ O sistema deve consolidar disponibilidade dos motoristas, publicar vagas aprovad
   - Tipo de veículo (Cargo Van / Passeio)
   - Restrições do veículo (kit gás/GNV, refrigerador, capacidade reduzida)
 - **RF-003** O sistema deve associar cada motorista ao seu `Transporter ID` da Amazon.
-- **RF-004** O login deve ser restrito a domínios/e-mails autorizados (ex.: @instalog.com.br, e-mails corporativos Amazon aprovados).
+- **RF-004** O login deve ser restrito a e-mails previamente cadastrados na lista de acesso (AllowedEmail com status ACTIVE). Não há auto-aprovação por domínio corporativo — toda identidade precisa ser explicitamente registrada.
 
 ### 3.2 Coleta Semanal de Disponibilidade
 
@@ -166,7 +166,7 @@ O sistema deve consolidar disponibilidade dos motoristas, publicar vagas aprovad
 | ID | Requisito |
 |----|-----------|
 | **RNF-001** | **Segurança**: autenticação via Amazon OAuth; tokens com expiração; sessões seguras. |
-| **RNF-002** | **Restrição de domínio**: acesso limitado a e-mails e domínios previamente autorizados. |
+| **RNF-002** | **Controle de acesso**: acesso limitado a e-mails previamente cadastrados na lista de acesso (AllowedEmail). |
 | **RNF-003** | **Mobile-first**: interface otimizada para smartphones, uma vez que motoristas e supervisores acessam majoritariamente via celular. |
 | **RNF-004** | **Idioma**: interface em português brasileiro (pt-BR). |
 | **RNF-005** | **Disponibilidade**: 99,5% de uptime em horários críticos de coleta e publicação de escala. |

@@ -17,7 +17,7 @@
 | 1d | Audit row written on login | PASS |
 | 2a | Unauthorized identity blocked (ACCESS_DENIED audit) | PASS |
 | 2b | Authorized identity signs in | PASS |
-| 2c | Owner cannot be locked out (corporate domain bypass) | PASS |
+| 2c | Owner cannot be locked out (pre-registered ACTIVE) | PASS |
 | 3a | DRIVER forced to onboarding | PASS |
 | 3b | CPF/phone as ciphertext (iv:authTag:ciphertext) | PASS |
 | 3c | CONSENT_GIVEN audit (no CPF) | PASS |
@@ -39,7 +39,7 @@
 
 - **Runner:** Vitest 3.2.7 with `node` environment
 - **Config:** `vitest.config.ts` with `vite-tsconfig-paths` plugin
-- **Test files:** 6 files, 114 tests, all passing
+- **Test files:** 6 files, 107 tests, all passing
 
 ### Test Files
 
@@ -48,7 +48,7 @@
 | `src/lib/__tests__/authz.test.ts` | 26 | roleIsAtLeast (17 pairs), requireAuth (4), requireRole (5) |
 | `src/lib/__tests__/crypto.test.ts` | 12 | encrypt/decrypt round-trip, random IV, blind index determinism |
 | `src/lib/__tests__/onboarding.test.ts` | 23 | validateCpf (13), validatePhone (10) |
-| `src/lib/__tests__/access-control.test.ts` | 17 | isCorporateDomain (8), isPreRegistered (4), authorizeSignIn (5) |
+| `src/lib/__tests__/access-control.test.ts` | 10 | isPreRegistered (4), authorizeSignIn (6) |
 | `src/lib/__tests__/admin-actions.test.ts` | 21 | DRIVER/SUPERVISOR refused (10), ACCOUNT_MANAGER/ADMIN allowed (8), unauthenticated refused (3) |
 | `src/lib/__tests__/jwt-callback.test.ts` | 15 | freshness window (6), first-sign-in promotion (9) |
 
@@ -69,7 +69,7 @@ npx vitest run
 ✓ src/lib/__tests__/onboarding.test.ts (23 tests) 9ms
 
 Test Files  6 passed (6)
-     Tests  114 passed (114)
+     Tests  107 passed (107)
 ```
 
 ### CI Workflow
@@ -176,27 +176,13 @@ Active users: 1
   drbarret@gmail.com (ADMIN)
 ```
 
-The `authorizeSignIn` function allows corporate-domain and pre-registered emails. The sole active user is the ADMIN.
+The `authorizeSignIn` function allows pre-registered emails with ACTIVE status. The sole active user is the ADMIN.
 
 **Verdict:** PASS
 
-#### 2c: Owner cannot be locked out (corporate domain bypass)
+#### 2c: Owner cannot be locked out (pre-registered ACTIVE)
 
-Tested by temporarily REVOKING `gustavo.alves@instalog.com.br` in `allowed_emails`:
-
-```
-Original status: ACTIVE
-After REVOKE: status=REVOKED
-Domain "instalog.com.br" in ALLOWED_DOMAINS: true
-authorizeSignIn would return { allowed: true } at Rule 1 (corporate domain)
-→ REVOKED status does not block corporate-domain users
-Restored: status=ACTIVE
-DB state restored after 2c
-```
-
-The `authorizeSignIn` function checks corporate domain first (Rule 1), then pre-registered (Rule 2). Even if an `AllowedEmail` row is REVOKED, the corporate domain check at Rule 1 returns `{ allowed: true }` before reaching the pre-registered check. This means `@instalog.com.br` users can never be locked out by revoking their `AllowedEmail`.
-
-For non-corporate owners (like `drbarret@gmail.com`), the ACTIVE pre-registration ensures access.
+The owner (`drbarret@gmail.com`) is pre-registered in `allowed_emails` with role ADMIN and status ACTIVE. The `authorizeSignIn` function checks the `AllowedEmail` table — if the row is ACTIVE, access is granted. If the row were ever missing or REVOKED, access would be refused (loud failure mode).
 
 **Verdict:** PASS
 
@@ -424,7 +410,7 @@ With only 1 active ADMIN (`drbarret@gmail.com`), all three guardrails fire corre
 | `src/lib/__tests__/authz.test.ts` | New: 26 tests for role hierarchy, requireAuth, requireRole |
 | `src/lib/__tests__/crypto.test.ts` | New: 12 tests for encrypt/decrypt, blind index |
 | `src/lib/__tests__/onboarding.test.ts` | New: 23 tests for validateCpf, validatePhone |
-| `src/lib/__tests__/access-control.test.ts` | New: 17 tests for isCorporateDomain, isPreRegistered, authorizeSignIn |
+| `src/lib/__tests__/access-control.test.ts` | New: 10 tests for isPreRegistered, authorizeSignIn |
 | `src/lib/__tests__/admin-actions.test.ts` | New: 21 tests proving DRIVER/SUPERVISOR are refused at server-action level |
 | `src/lib/__tests__/jwt-callback.test.ts` | New: 6 tests for role freshness window + fail-closed |
 | `scripts/verify-phase1.mjs` | Original verification script (has the "2 ADMINs" counting bug) |

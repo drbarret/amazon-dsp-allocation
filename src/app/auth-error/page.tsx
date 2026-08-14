@@ -12,8 +12,8 @@ export default function AuthErrorPage() {
           </div>
           <CardTitle className="text-xl">Acesso não autorizado</CardTitle>
           <CardDescription>
-            Seu e-mail não está autorizado a acessar o sistema. Entre em contato
-            com seu gerente ou administrador para solicitar acesso.
+            Seu acesso ainda não foi liberado. Entre em contato com seu
+            supervisor ou gerente de contas para solicitar a liberação.
           </CardDescription>
         </CardHeader>
         <CardContent>
