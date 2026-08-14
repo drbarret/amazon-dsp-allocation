@@ -17,8 +17,9 @@
  *
  * Access control:
  *   - ACTIVE drivers → AllowedEmail (status=ACTIVE) + User (active=true) + DriverProfile
- *   - INACTIVE drivers → AllowedEmail (status=ACTIVE) + User (active=false) + DriverProfile
- *     The User.active=false check in auth.ts signIn callback blocks login.
+ *   - INACTIVE drivers → AllowedEmail (status=BLOCKED) + User (active=false) + DriverProfile
+ *     Two-layer defense: AllowedEmail.status=BLOCKED blocks at Layer 1 (authorizeSignIn),
+ *     User.active=false blocks at Layer 2 (signIn callback). Both must pass.
  *   - Existing AllowedEmail rows (the 9 staff entries) are never modified.
  */
 
@@ -318,6 +319,7 @@ async function importDrivers(drivers, dryRun) {
     for (const driver of drivers) {
       try {
         const isActive = driver.status === "ACTIVE";
+        const allowedEmailStatus = isActive ? "ACTIVE" : "BLOCKED";
 
         // 1. Upsert AllowedEmail
         const existingAllowed = await client.query(
@@ -330,31 +332,33 @@ async function importDrivers(drivers, dryRun) {
           if (!dryRun) {
             const result = await client.query(
               `INSERT INTO "allowed_emails" ("id", "email", "role", "status", "createdAt", "updatedAt")
-               VALUES (gen_random_uuid(), $1, 'DRIVER', 'ACTIVE', now(), now())
+               VALUES (gen_random_uuid(), $1, 'DRIVER', $2, now(), now())
                RETURNING id`,
-              [driver.email]
+              [driver.email, allowedEmailStatus]
             );
             allowedEmailId = result.rows[0].id;
           }
           summary.created.allowedEmails++;
           console.log(
-            `  ✅ AllowedEmail: ${maskEmail(driver.email)} (${driver.status})`
+            `  ✅ AllowedEmail: ${maskEmail(driver.email)} (${allowedEmailStatus})`
           );
         } else {
           allowedEmailId = existingAllowed.rows[0].id;
           const existingStatus = existingAllowed.rows[0].status;
 
-          if (existingStatus !== "ACTIVE") {
-            // Reactivate if previously REVOKED
+          // Only update if the status needs to change to match driver status
+          const desiredStatus = allowedEmailStatus;
+          if (existingStatus !== desiredStatus && existingStatus !== "REVOKED") {
+            // Don't overwrite REVOKED — that's a permanent denial
             if (!dryRun) {
               await client.query(
-                `UPDATE "allowed_emails" SET status = 'ACTIVE', "updatedAt" = now() WHERE id = $1`,
-                [allowedEmailId]
+                `UPDATE "allowed_emails" SET status = $1, "updatedAt" = now() WHERE id = $2`,
+                [desiredStatus, allowedEmailId]
               );
             }
             summary.updated.allowedEmails++;
             console.log(
-              `  🔄 AllowedEmail reativado: ${maskEmail(driver.email)}`
+              `  🔄 AllowedEmail atualizado: ${maskEmail(driver.email)} (${existingStatus} → ${desiredStatus})`
             );
           } else {
             summary.skipped++;

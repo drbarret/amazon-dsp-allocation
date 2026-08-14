@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Test: INACTIVE driver is refused at login, ACTIVE driver is accepted.
@@ -7,169 +7,218 @@ import { describe, it, expect } from "vitest";
 //   Layer 1: authorizeSignIn() in access-control.ts — checks AllowedEmail.status === "ACTIVE"
 //   Layer 2: signIn callback in auth.ts:56-63 — checks User.active for existing users
 //
-// Layer 1 is already tested in access-control.test.ts.
-// This file tests Layer 2 by exercising the same pattern used in auth.ts:
-//   if (!existingUser.active) → redirect to /auth-error?error=deactivated
-//
-// We simulate the signIn callback logic directly since we cannot run the
-// full OAuth flow without an Amazon provider.
+// This test calls the REAL production code for both layers by mocking prisma.
+// If someone breaks the active check in auth.ts or the status check in
+// access-control.ts, this test MUST fail.
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Simulated signIn callback logic (extracted from auth.ts:37-72)
+// Mocks
 // ---------------------------------------------------------------------------
 
-interface SimulatedUser {
-  id: string;
-  email: string;
-  active: boolean;
-  role: string;
-}
+const mockPrismaUser = {
+  findUnique: vi.fn(),
+  update: vi.fn(),
+};
 
-interface AllowedEmailRecord {
-  id: string;
-  email: string;
-  status: string;
-  role: string;
-}
+const mockPrismaAllowedEmail = {
+  findUnique: vi.fn(),
+};
 
-/**
- * Simulates the signIn callback logic from auth.ts.
- * This is the EXACT same pattern, extracted for testability.
- */
-function simulateSignInDecision(
-  existingUser: SimulatedUser | null,
-  allowedEmail: AllowedEmailRecord | null
-): { allowed: boolean; reason?: string } {
-  if (existingUser) {
-    // auth.ts:56-63 — refuse deactivated users
-    if (!existingUser.active) {
-      return { allowed: false, reason: "user_deactivated" };
+const mockPrisma = {
+  user: mockPrismaUser,
+  allowedEmail: mockPrismaAllowedEmail,
+  auditLog: { create: vi.fn() },
+};
+
+vi.mock("@/lib/prisma", () => ({
+  prisma: mockPrisma,
+}));
+
+// Import the REAL production code
+const { authorizeSignIn } = await import("@/lib/access-control");
+const { signInDecision } = await import("@/lib/sign-in-decision");
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+// ---------------------------------------------------------------------------
+// Layer 1 tests: authorizeSignIn (access-control.ts)
+// These call the REAL authorizeSignIn function with mocked prisma.
+// ---------------------------------------------------------------------------
+
+describe("Layer 1: authorizeSignIn (AllowedEmail.status check)", () => {
+  it("allows ACTIVE AllowedEmail", async () => {
+    mockPrismaAllowedEmail.findUnique.mockResolvedValue({
+      id: "ae1", email: "driver@test.com", role: "DRIVER", status: "ACTIVE",
+    });
+    const result = await authorizeSignIn("driver@test.com");
+    expect(result.allowed).toBe(true);
+  });
+
+  it("refuses REVOKED AllowedEmail", async () => {
+    mockPrismaAllowedEmail.findUnique.mockResolvedValue({
+      id: "ae2", email: "revoked@test.com", role: "DRIVER", status: "REVOKED",
+    });
+    const result = await authorizeSignIn("revoked@test.com");
+    expect(result.allowed).toBe(false);
+    if (!result.allowed) {
+      expect(result.reason).toBe("EMAIL_NOT_AUTHORIZED");
     }
-    // auth.ts:66-71 — log successful login
-    return { allowed: true };
-  }
+  });
 
-  // New user: check access control (auth.ts:74-82)
-  if (!allowedEmail || allowedEmail.status !== "ACTIVE") {
-    return { allowed: false, reason: "EMAIL_NOT_AUTHORIZED" };
-  }
+  it("refuses BLOCKED AllowedEmail", async () => {
+    mockPrismaAllowedEmail.findUnique.mockResolvedValue({
+      id: "ae3", email: "blocked@test.com", role: "DRIVER", status: "BLOCKED",
+    });
+    const result = await authorizeSignIn("blocked@test.com");
+    expect(result.allowed).toBe(false);
+    if (!result.allowed) {
+      expect(result.reason).toBe("EMAIL_NOT_AUTHORIZED");
+    }
+  });
 
-  return { allowed: true };
-}
+  it("refuses email not in AllowedEmail table", async () => {
+    mockPrismaAllowedEmail.findUnique.mockResolvedValue(null);
+    const result = await authorizeSignIn("unknown@test.com");
+    expect(result.allowed).toBe(false);
+    if (!result.allowed) {
+      expect(result.reason).toBe("EMAIL_NOT_AUTHORIZED");
+    }
+  });
+});
 
 // ---------------------------------------------------------------------------
-// Tests
+// Layer 2 tests: signInDecision (extracted from auth.ts signIn callback)
+// These call the REAL signInDecision function — the same code that auth.ts
+// uses in its signIn callback. If someone changes the active check in
+// signInDecision, this test MUST fail.
 // ---------------------------------------------------------------------------
 
-describe("signIn authorization — ACTIVE vs INACTIVE driver", () => {
+describe("Layer 2: signInDecision (User.active check)", () => {
+  it("allows ACTIVE existing user", async () => {
+    mockPrismaUser.findUnique.mockResolvedValue({
+      id: "u1", email: "active@test.com", active: true, role: "DRIVER",
+    });
+    mockPrismaUser.update.mockResolvedValue({});
+
+    const result = await signInDecision({
+      email: "active@test.com",
+      providerAccountId: "amzn-123",
+    });
+    expect(result.allowed).toBe(true);
+  });
+
+  it("refuses INACTIVE existing user", async () => {
+    mockPrismaUser.findUnique.mockResolvedValue({
+      id: "u2", email: "inactive@test.com", active: false, role: "DRIVER",
+    });
+    mockPrismaUser.update.mockResolvedValue({});
+
+    const result = await signInDecision({
+      email: "inactive@test.com",
+      providerAccountId: "amzn-456",
+    });
+    expect(result.allowed).toBe(false);
+    if (!result.allowed) {
+      expect(result.reason).toBe("user_deactivated");
+    }
+  });
+
+  it("allows new user with ACTIVE AllowedEmail", async () => {
+    mockPrismaUser.findUnique.mockResolvedValue(null);
+    mockPrismaAllowedEmail.findUnique.mockResolvedValue({
+      id: "ae4", email: "new@test.com", role: "DRIVER", status: "ACTIVE",
+    });
+
+    const result = await signInDecision({
+      email: "new@test.com",
+      providerAccountId: "amzn-789",
+    });
+    expect(result.allowed).toBe(true);
+  });
+
+  it("refuses new user with REVOKED AllowedEmail", async () => {
+    mockPrismaUser.findUnique.mockResolvedValue(null);
+    mockPrismaAllowedEmail.findUnique.mockResolvedValue({
+      id: "ae5", email: "revoked-new@test.com", role: "DRIVER", status: "REVOKED",
+    });
+
+    const result = await signInDecision({
+      email: "revoked-new@test.com",
+      providerAccountId: "amzn-000",
+    });
+    expect(result.allowed).toBe(false);
+    if (!result.allowed) {
+      expect(result.reason).toBe("EMAIL_NOT_AUTHORIZED");
+    }
+  });
+
+  it("refuses new user with BLOCKED AllowedEmail", async () => {
+    mockPrismaUser.findUnique.mockResolvedValue(null);
+    mockPrismaAllowedEmail.findUnique.mockResolvedValue({
+      id: "ae6", email: "blocked-new@test.com", role: "DRIVER", status: "BLOCKED",
+    });
+
+    const result = await signInDecision({
+      email: "blocked-new@test.com",
+      providerAccountId: "amzn-111",
+    });
+    expect(result.allowed).toBe(false);
+    if (!result.allowed) {
+      expect(result.reason).toBe("EMAIL_NOT_AUTHORIZED");
+    }
+  });
+
+  it("refuses new user with no AllowedEmail record", async () => {
+    mockPrismaUser.findUnique.mockResolvedValue(null);
+    mockPrismaAllowedEmail.findUnique.mockResolvedValue(null);
+
+    const result = await signInDecision({
+      email: "unknown@test.com",
+      providerAccountId: "amzn-222",
+    });
+    expect(result.allowed).toBe(false);
+    if (!result.allowed) {
+      expect(result.reason).toBe("EMAIL_NOT_AUTHORIZED");
+    }
+  });
+
   // -----------------------------------------------------------------------
-  // ACTIVE driver: User exists and active=true → allowed
+  // Edge: ACTIVE existing user with REVOKED AllowedEmail → still allowed
+  // (existingUser check comes first and passes)
   // -----------------------------------------------------------------------
-  it("allows ACTIVE driver (existing user, active=true)", () => {
-    const user: SimulatedUser = {
-      id: "u1",
-      email: "active-driver@gmail.com",
-      active: true,
-      role: "DRIVER",
-    };
-    const result = simulateSignInDecision(user, null);
+  it("allows ACTIVE existing user even if AllowedEmail is REVOKED (existing user path wins)", async () => {
+    mockPrismaUser.findUnique.mockResolvedValue({
+      id: "u3", email: "active-revoked@test.com", active: true, role: "DRIVER",
+    });
+    mockPrismaUser.update.mockResolvedValue({});
+
+    const result = await signInDecision({
+      email: "active-revoked@test.com",
+      providerAccountId: "amzn-333",
+    });
     expect(result.allowed).toBe(true);
   });
 
   // -----------------------------------------------------------------------
-  // INACTIVE driver: User exists and active=false → refused
-  // -----------------------------------------------------------------------
-  it("refuses INACTIVE driver (existing user, active=false)", () => {
-    const user: SimulatedUser = {
-      id: "u2",
-      email: "inactive-driver@gmail.com",
-      active: false,
-      role: "DRIVER",
-    };
-    const result = simulateSignInDecision(user, null);
-    expect(result.allowed).toBe(false);
-    expect(result.reason).toBe("user_deactivated");
-  });
-
-  // -----------------------------------------------------------------------
-  // New user with ACTIVE AllowedEmail → allowed
-  // -----------------------------------------------------------------------
-  it("allows new user with ACTIVE AllowedEmail", () => {
-    const allowedEmail: AllowedEmailRecord = {
-      id: "ae1",
-      email: "new-driver@gmail.com",
-      status: "ACTIVE",
-      role: "DRIVER",
-    };
-    const result = simulateSignInDecision(null, allowedEmail);
-    expect(result.allowed).toBe(true);
-  });
-
-  // -----------------------------------------------------------------------
-  // New user with REVOKED AllowedEmail → refused
-  // -----------------------------------------------------------------------
-  it("refuses new user with REVOKED AllowedEmail", () => {
-    const allowedEmail: AllowedEmailRecord = {
-      id: "ae2",
-      email: "revoked@gmail.com",
-      status: "REVOKED",
-      role: "DRIVER",
-    };
-    const result = simulateSignInDecision(null, allowedEmail);
-    expect(result.allowed).toBe(false);
-    expect(result.reason).toBe("EMAIL_NOT_AUTHORIZED");
-  });
-
-  // -----------------------------------------------------------------------
-  // New user with no AllowedEmail → refused
-  // -----------------------------------------------------------------------
-  it("refuses new user with no AllowedEmail record", () => {
-    const result = simulateSignInDecision(null, null);
-    expect(result.allowed).toBe(false);
-    expect(result.reason).toBe("EMAIL_NOT_AUTHORIZED");
-  });
-
-  // -----------------------------------------------------------------------
-  // Edge: ACTIVE user with REVOKED AllowedEmail → still allowed
-  // (because existingUser check comes first and passes)
-  // -----------------------------------------------------------------------
-  it("allows ACTIVE existing user even if AllowedEmail is REVOKED (existing user path wins)", () => {
-    const user: SimulatedUser = {
-      id: "u3",
-      email: "active-revoked@gmail.com",
-      active: true,
-      role: "DRIVER",
-    };
-    const allowedEmail: AllowedEmailRecord = {
-      id: "ae3",
-      email: "active-revoked@gmail.com",
-      status: "REVOKED",
-      role: "DRIVER",
-    };
-    const result = simulateSignInDecision(user, allowedEmail);
-    expect(result.allowed).toBe(true);
-  });
-
-  // -----------------------------------------------------------------------
-  // Edge: INACTIVE user with ACTIVE AllowedEmail → refused
+  // Edge: INACTIVE existing user with ACTIVE AllowedEmail → refused
   // (existingUser.active=false check wins)
   // -----------------------------------------------------------------------
-  it("refuses INACTIVE existing user even if AllowedEmail is ACTIVE", () => {
-    const user: SimulatedUser = {
-      id: "u4",
-      email: "inactive-allowed@gmail.com",
-      active: false,
-      role: "DRIVER",
-    };
-    const allowedEmail: AllowedEmailRecord = {
-      id: "ae4",
-      email: "inactive-allowed@gmail.com",
-      status: "ACTIVE",
-      role: "DRIVER",
-    };
-    const result = simulateSignInDecision(user, allowedEmail);
+  it("refuses INACTIVE existing user even if AllowedEmail is ACTIVE", async () => {
+    mockPrismaUser.findUnique.mockResolvedValue({
+      id: "u4", email: "inactive-allowed@test.com", active: false, role: "DRIVER",
+    });
+    mockPrismaUser.update.mockResolvedValue({});
+
+    const result = await signInDecision({
+      email: "inactive-allowed@test.com",
+      providerAccountId: "amzn-444",
+    });
     expect(result.allowed).toBe(false);
-    expect(result.reason).toBe("user_deactivated");
+    if (!result.allowed) {
+      expect(result.reason).toBe("user_deactivated");
+    }
   });
 });

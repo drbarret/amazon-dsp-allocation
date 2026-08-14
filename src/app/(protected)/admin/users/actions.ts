@@ -89,7 +89,7 @@ export async function deactivateUser(targetUserId: string) {
 
   const target = await prisma.user.findUnique({
     where: { id: targetUserId },
-    select: { id: true, role: true, active: true },
+    select: { id: true, role: true, active: true, email: true },
   });
   if (!target) {
     return { success: false, error: "Usuário não encontrado." };
@@ -121,9 +121,17 @@ export async function deactivateUser(targetUserId: string) {
     };
   }
 
+  // Layer 2: deactivate User
   await prisma.user.update({
     where: { id: targetUserId },
     data: { active: false },
+  });
+
+  // Layer 1: block AllowedEmail (set ACTIVE → BLOCKED)
+  // Only touch it if it exists and is ACTIVE — don't overwrite REVOKED.
+  await prisma.allowedEmail.updateMany({
+    where: { email: target.email, status: "ACTIVE" },
+    data: { status: "BLOCKED" },
   });
 
   await writeAuditLog({
@@ -144,7 +152,7 @@ export async function reactivateUser(targetUserId: string) {
 
   const target = await prisma.user.findUnique({
     where: { id: targetUserId },
-    select: { id: true, active: true },
+    select: { id: true, active: true, email: true },
   });
   if (!target) {
     return { success: false, error: "Usuário não encontrado." };
@@ -154,9 +162,17 @@ export async function reactivateUser(targetUserId: string) {
     return { success: false, error: "Usuário já está ativo." };
   }
 
+  // Layer 2: reactivate User
   await prisma.user.update({
     where: { id: targetUserId },
     data: { active: true },
+  });
+
+  // Layer 1: reactivate AllowedEmail (set BLOCKED → ACTIVE)
+  // Only touch it if it exists and is BLOCKED — don't overwrite REVOKED.
+  await prisma.allowedEmail.updateMany({
+    where: { email: target.email, status: "BLOCKED" },
+    data: { status: "ACTIVE" },
   });
 
   await writeAuditLog({

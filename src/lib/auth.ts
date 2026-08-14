@@ -1,8 +1,7 @@
 import NextAuth from "next-auth";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
-import { authorizeSignIn } from "@/lib/access-control";
-import { writeAuditLog } from "@/lib/audit";
+import { signInDecision } from "@/lib/sign-in-decision";
 import { jwtCallback } from "@/lib/jwt-callback";
 import type { UserRole } from "@/generated/prisma";
 
@@ -38,48 +37,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (!user.email) return false;
 
       if (account?.provider === "amazon") {
-        const existingUser = await prisma.user.findUnique({
-          where: { email: user.email },
+        const decision = await signInDecision({
+          email: user.email,
+          providerAccountId: account.providerAccountId,
         });
 
-        if (existingUser) {
-          // Update amazon sub and last login
-          await prisma.user.update({
-            where: { id: existingUser.id },
-            data: {
-              amazonSub: account.providerAccountId,
-              lastLoginAt: new Date(),
-            },
-          });
-
-          // Refuse deactivated users
-          if (!existingUser.active) {
-            await writeAuditLog({
-              eventType: "ACCESS_DENIED",
-              targetUserId: existingUser.id,
-              metadata: { reason: "user_deactivated", email: user.email },
-            });
+        if (!decision.allowed) {
+          if (decision.reason === "user_deactivated") {
             return "/auth-error?error=deactivated";
           }
-
-          // Log successful login
-          await writeAuditLog({
-            eventType: "LOGIN",
-            actorId: existingUser.id,
-          });
-
-          return true;
-        }
-
-        // New user: check access control
-        const authz = await authorizeSignIn(user.email);
-        if (!authz.allowed) {
-          await writeAuditLog({
-            eventType: "ACCESS_DENIED",
-            metadata: { reason: authz.reason, email: user.email },
-          });
           return "/auth-error?error=unauthorized";
         }
+
+        return true;
       }
 
       return true;

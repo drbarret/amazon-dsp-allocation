@@ -7,6 +7,11 @@ import { prisma } from "@/lib/prisma";
  * This is the ONLY authorization gate for sign-in. There is no
  * corporate-domain auto-approve — every identity must be explicitly
  * pre-registered in the AllowedEmail table with status ACTIVE.
+ *
+ * Statuses:
+ *   ACTIVE  — allowed to sign in
+ *   REVOKED — invite explicitly withdrawn (permanent denial)
+ *   BLOCKED — user is deactivated (temporary, reversible via reactivation)
  */
 export async function isPreRegistered(email: string) {
   const normalized = email.toLowerCase().trim();
