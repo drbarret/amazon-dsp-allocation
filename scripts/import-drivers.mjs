@@ -134,6 +134,17 @@ function excelSerialToDate(serial) {
 }
 
 /**
+ * Normalize a Date or date string to a YYYY-MM-DD string for comparison.
+ * Returns null for null/undefined/invalid input.
+ */
+function toDateString(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const d = value instanceof Date ? value : new Date(value);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
+/**
  * Format phone to E.164-ish: +55 + DDD + number.
  * Input: 11945412952 (11 digits, DDD + 9 + 8 digits)
  */
@@ -418,32 +429,47 @@ async function importDrivers(drivers, dryRun) {
 
         // 3. Upsert DriverProfile
         const existingProfile = await client.query(
-          `SELECT id, "transporterId", "phone", "phoneFormatted" FROM "driver_profiles" WHERE "userId" = $1`,
+          `SELECT id, "transporterId", "phone", "phoneFormatted", "cnhExpiration" FROM "driver_profiles" WHERE "userId" = $1`,
           [userId]
         );
 
         if (existingProfile.rowCount === 0) {
           if (!dryRun) {
             await client.query(
-              `INSERT INTO "driver_profiles" ("id", "userId", "transporterId", "phone", "phoneFormatted", "vehicleType", "onboardingCompleted", "createdAt", "updatedAt")
-               VALUES (gen_random_uuid(), $1, $2, $3, $4, 'CARGO_VAN', false, now(), now())`,
-              [userId, driver.transporterId, driver.phone, driver.phoneFormatted]
+              `INSERT INTO "driver_profiles" ("id", "userId", "transporterId", "phone", "phoneFormatted", "vehicleType", "onboardingCompleted", "cnhExpiration", "createdAt", "updatedAt")
+               VALUES (gen_random_uuid(), $1, $2, $3, $4, 'CARGO_VAN', false, $5, now(), now())`,
+              [
+                userId,
+                driver.transporterId,
+                driver.phone,
+                driver.phoneFormatted,
+                driver.cnhExpiration,
+              ]
             );
           }
           summary.created.driverProfiles++;
           console.log(
-            `  ✅ DriverProfile: ${maskEmail(driver.email)} (transporterId=${driver.transporterId})`
+            `  ✅ DriverProfile: ${maskEmail(driver.email)} (transporterId=${driver.transporterId}, cnh=${driver.cnhExpiration ?? "—"})`
           );
         } else {
           const ep = existingProfile.rows[0];
           let needsUpdate = false;
           if (ep.transporterId !== driver.transporterId) needsUpdate = true;
+          if (toDateString(ep.cnhExpiration) !== toDateString(driver.cnhExpiration)) {
+            needsUpdate = true;
+          }
 
           if (needsUpdate) {
             if (!dryRun) {
               await client.query(
-                `UPDATE "driver_profiles" SET "transporterId" = $1, "phone" = $2, "phoneFormatted" = $3, "updatedAt" = now() WHERE id = $4`,
-                [driver.transporterId, driver.phone, driver.phoneFormatted, ep.id]
+                `UPDATE "driver_profiles" SET "transporterId" = $1, "phone" = $2, "phoneFormatted" = $3, "cnhExpiration" = $4, "updatedAt" = now() WHERE id = $5`,
+                [
+                  driver.transporterId,
+                  driver.phone,
+                  driver.phoneFormatted,
+                  driver.cnhExpiration,
+                  ep.id,
+                ]
               );
             }
             summary.updated.driverProfiles++;

@@ -6,6 +6,7 @@ import { writeAuditLog } from "@/lib/audit";
 import { roleIsAtLeast } from "@/lib/authz";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { allocateVacancies } from "@/lib/distribution-engine";
 import type { UserRole, VehicleType } from "@/generated/prisma";
 
 const VEHICLE_TYPES: VehicleType[] = ["CARGO_VAN", "LARGE_VAN", "PASSEIO"];
@@ -308,6 +309,185 @@ export async function listDispatchWeeks() {
   });
 
   return { success: true, weeks };
+}
+
+export interface RunDistributionResult {
+  assignedCount: number;
+  unassignedCount: number;
+  underQuotaCount: number;
+  expiredCnhCount: number;
+  assignments: {
+    vacancyId: string;
+    driverProfileId: string;
+    userId: string;
+    name: string;
+    vehicleType: VehicleType;
+    date: Date;
+    shiftBlock: string;
+    cnhExpired: boolean;
+  }[];
+  unassignedVacancies: {
+    id: string;
+    date: Date;
+    vehicleType: VehicleType;
+    shiftBlock: string;
+    quantity: number;
+  }[];
+  underQuotaDrivers: {
+    driverProfileId: string;
+    userId: string;
+    name: string;
+    vehicleType: VehicleType;
+    assignedCount: number;
+  }[];
+}
+
+/**
+ * Run the distribution algorithm for a week and persist the resulting
+ * assignments. Idempotent: any previous assignments for the week are replaced.
+ */
+export async function runDistribution(
+  weekId: string
+): Promise<{ success: boolean; error?: string; result?: RunDistributionResult }> {
+  const session = await requireSupervisorPlus();
+  const actorId = session.user.id;
+
+  const transportCompanyId = await getUserTransportCompanyId(actorId);
+  if (!transportCompanyId) {
+    return { success: false, error: "Usuário não vinculado a uma transportadora." };
+  }
+
+  const week = await prisma.dispatchWeek.findUnique({
+    where: { id: weekId },
+  });
+  if (!week) {
+    return { success: false, error: "Semana não encontrada." };
+  }
+  if (week.transportCompanyId !== transportCompanyId) {
+    return { success: false, error: "Semana não pertence à sua transportadora." };
+  }
+
+  // Load vacancies and active drivers for the week.
+  const [vacancies, activeUsers] = await Promise.all([
+    prisma.vacancy.findMany({
+      where: { dispatchWeekId: weekId },
+      orderBy: [{ date: "asc" }, { shiftBlock: "asc" }, { vehicleType: "asc" }],
+    }),
+    prisma.user.findMany({
+      where: {
+        transportCompanyId,
+        role: "DRIVER",
+        active: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        driverProfile: {
+          select: {
+            id: true,
+            vehicleType: true,
+            cnhExpiration: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  const drivers = activeUsers
+    .filter((u) => u.driverProfile)
+    .map((u) => ({
+      driverProfileId: u.driverProfile!.id,
+      userId: u.id,
+      name: u.name,
+      vehicleType: u.driverProfile!.vehicleType,
+      active: true,
+      cnhExpiration: u.driverProfile!.cnhExpiration,
+    }));
+
+  const result = allocateVacancies({ week, vacancies, drivers });
+
+  // Persist assignments inside a transaction, replacing previous ones.
+  await prisma.$transaction(async (tx) => {
+    // Remove previous assignments for this week's vacancies.
+    const vacancyIds = vacancies.map((v) => v.id);
+    if (vacancyIds.length > 0) {
+      await tx.dispatchAssignment.deleteMany({
+        where: { vacancyId: { in: vacancyIds } },
+      });
+    }
+
+    if (result.assignments.length > 0) {
+      await tx.dispatchAssignment.createMany({
+        data: result.assignments.map((a) => ({
+          vacancyId: a.vacancyId,
+          driverProfileId: a.driverProfileId,
+          assignedByUserId: actorId,
+          status: "PENDING",
+        })),
+      });
+    }
+  });
+
+  // Audit: who ran it and how many vacancies were assigned.
+  await writeAuditLog({
+    eventType: "ALLOCATION_RUN",
+    actorId,
+    metadata: {
+      dispatchWeekId: weekId,
+      assignedCount: result.assignments.length,
+      unassignedCount: result.unassignedVacancies.length,
+      underQuotaCount: result.underQuotaDrivers.length,
+      expiredCnhCount: result.expiredCnhAssignments.length,
+    },
+  });
+
+  revalidatePath("/dispatch");
+
+  const driverNameById = new Map(drivers.map((d) => [d.driverProfileId, d.name]));
+  const driverUserById = new Map(drivers.map((d) => [d.driverProfileId, d.userId]));
+  const expiredSet = new Set(result.expiredCnhAssignments);
+
+  const assignedCountByDriver = new Map<string, number>();
+  for (const a of result.assignments) {
+    assignedCountByDriver.set(
+      a.driverProfileId,
+      (assignedCountByDriver.get(a.driverProfileId) ?? 0) + 1
+    );
+  }
+
+  return {
+    success: true,
+    result: {
+      assignedCount: result.assignments.length,
+      unassignedCount: result.unassignedVacancies.length,
+      underQuotaCount: result.underQuotaDrivers.length,
+      expiredCnhCount: result.expiredCnhAssignments.length,
+      assignments: result.assignments.map((a) => ({
+        vacancyId: a.vacancyId,
+        driverProfileId: a.driverProfileId,
+        userId: a.userId,
+        name: driverNameById.get(a.driverProfileId) ?? "—",
+        vehicleType: a.vehicleType,
+        date: a.date,
+        shiftBlock: a.shiftBlock,
+        cnhExpired: expiredSet.has(a.driverProfileId),
+      })),
+      unassignedVacancies: result.unassignedVacancies.map((v) => ({
+        id: v.id,
+        date: v.date,
+        vehicleType: v.vehicleType,
+        shiftBlock: v.shiftBlock,
+        quantity: v.quantity,
+      })),
+      underQuotaDrivers: result.underQuotaDrivers.map((d) => ({
+        driverProfileId: d.driverProfileId,
+        userId: driverUserById.get(d.driverProfileId) ?? d.userId,
+        name: d.name,
+        vehicleType: d.vehicleType,
+        assignedCount: assignedCountByDriver.get(d.driverProfileId) ?? 0,
+      })),
+    },
+  };
 }
 
 export { VEHICLE_TYPES };

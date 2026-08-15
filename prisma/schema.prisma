@@ -226,6 +226,7 @@ model DriverProfile {
   vehicleType         VehicleType @default(CARGO_VAN)
   transporterId       String? // Amazon Transporter ID
   onboardingCompleted Boolean     @default(false)
+  cnhExpiration       DateTime? // CNH expiry date; null = unknown/not set
 
   // User-confirmed: deactivate after 3 approved behavior marks.
   behaviorApprovedCount Int @default(0)

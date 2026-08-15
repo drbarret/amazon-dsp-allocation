@@ -42,6 +42,12 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    # CI has no Postgres. Integration tests require a real database and FAIL
+    # HIGH when it is unreachable, so we deliberately opt out here. This makes
+    # them show as "skipped" in the vitest output — never as a silent pass.
+    env:
+      SKIP_INTEGRATION_TESTS: "1"
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4

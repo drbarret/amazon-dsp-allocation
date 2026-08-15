@@ -33,9 +33,11 @@ import {
   updateVacancy,
   deleteVacancy,
   listVacancies,
+  runDistribution,
   VEHICLE_TYPES,
 } from "./actions";
 import type { DispatchWeek, Vacancy, VehicleType } from "@/generated/prisma";
+import type { RunDistributionResult } from "./actions";
 
 const VEHICLE_LABELS: Record<VehicleType, string> = {
   CARGO_VAN: "Cargo Van",
@@ -76,6 +78,9 @@ export function DispatchClient({ weeks, drivers, hasTransportCompany }: Props) {
   });
 
   const [confirmDelete, setConfirmDelete] = useState<Vacancy | null>(null);
+
+  const [distribution, setDistribution] = useState<RunDistributionResult | null>(null);
+  const [isDistributing, setIsDistributing] = useState(false);
 
   const selectedWeek = useMemo(
     () => weeks.find((w) => w.id === selectedWeekId) ?? null,
@@ -180,6 +185,31 @@ export function DispatchClient({ weeks, drivers, hasTransportCompany }: Props) {
     });
   }
 
+  function handleRunDistribution() {
+    if (!selectedWeekId) {
+      toast.error("Selecione uma semana.");
+      return;
+    }
+    setIsDistributing(true);
+    startTransition(async () => {
+      try {
+        const result = await runDistribution(selectedWeekId);
+        if (result.success && result.result) {
+          setDistribution(result.result);
+          toast.success(
+            `${result.result.assignedCount} vaga(s) atribuída(s).`
+          );
+        } else {
+          toast.error(result.error ?? "Erro ao distribuir vagas.");
+        }
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao distribuir vagas.");
+      } finally {
+        setIsDistributing(false);
+      }
+    });
+  }
+
   if (!hasTransportCompany) {
     return (
       <div className="space-y-6 p-4 sm:p-6">
@@ -207,12 +237,12 @@ export function DispatchClient({ weeks, drivers, hasTransportCompany }: Props) {
         </div>
         <div className="flex items-center gap-2">
           <Button
-            variant="outline"
-            disabled
-            title="Distribuição automática em breve"
+            onClick={handleRunDistribution}
+            disabled={isPending || isDistributing || !selectedWeekId}
+            title="Executa o algoritmo de distribuição de vagas"
           >
             <SparklesIcon className="mr-2 size-4" />
-            Distribuir Automaticamente
+            {isDistributing ? "Distribuindo..." : "Distribuir vagas"}
           </Button>
           <Button onClick={openCreate} disabled={isPending || !selectedWeekId}>
             <PlusIcon className="mr-2 size-4" />
@@ -384,6 +414,142 @@ export function DispatchClient({ weeks, drivers, hasTransportCompany }: Props) {
           </div>
         </div>
       </div>
+
+      {/* Distribution results */}
+      {distribution && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-zinc-900">Resultado da Distribuição</h2>
+            <div className="flex items-center gap-2">
+              <Badge variant="muted">{distribution.assignedCount} atribuídas</Badge>
+              <Badge variant="muted">{distribution.unassignedCount} não atribuídas</Badge>
+              <Badge variant="muted">{distribution.underQuotaCount} abaixo da cota</Badge>
+              {distribution.expiredCnhCount > 0 && (
+                <Badge variant="destructive">{distribution.expiredCnhCount} CNH vencida</Badge>
+              )}
+            </div>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-3">
+            {/* Assignments */}
+            <div className="lg:col-span-2 space-y-4">
+              <h3 className="text-sm font-semibold text-zinc-700">Atribuições</h3>
+              <div className="overflow-x-auto rounded-lg border bg-white">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-zinc-50 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                      <th className="px-4 py-3">Data</th>
+                      <th className="px-4 py-3">Categoria</th>
+                      <th className="px-4 py-3">Turno</th>
+                      <th className="px-4 py-3">Motorista</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {distribution.assignments.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-8 text-center text-sm text-zinc-400">
+                          Nenhuma vaga atribuída.
+                        </td>
+                      </tr>
+                    ) : (
+                      distribution.assignments.map((a, i) => (
+                        <tr key={i} className="hover:bg-zinc-50">
+                          <td className="px-4 py-3">
+                            {new Date(a.date).toLocaleDateString("pt-BR")}
+                          </td>
+                          <td className="px-4 py-3">
+                            <Badge variant="muted">{VEHICLE_LABELS[a.vehicleType]}</Badge>
+                          </td>
+                          <td className="px-4 py-3 text-zinc-700">{a.shiftBlock}</td>
+                          <td className="px-4 py-3">
+                            <span className="font-medium text-zinc-900">{a.name}</span>
+                            {a.cnhExpired && (
+                              <span className="ml-1 text-amber-600" title="CNH vencida">
+                                *
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Unassigned + under quota */}
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold text-zinc-700">Vagas não atribuídas</h3>
+                <div className="mt-2 overflow-x-auto rounded-lg border bg-white">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-zinc-50 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                        <th className="px-4 py-3">Data</th>
+                        <th className="px-4 py-3">Categoria</th>
+                        <th className="px-4 py-3">Qtd</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {distribution.unassignedVacancies.length === 0 ? (
+                        <tr>
+                          <td colSpan={3} className="px-4 py-6 text-center text-sm text-zinc-400">
+                            Nenhuma.
+                          </td>
+                        </tr>
+                      ) : (
+                        distribution.unassignedVacancies.map((v) => (
+                          <tr key={v.id} className="hover:bg-zinc-50">
+                            <td className="px-4 py-3">
+                              {new Date(v.date).toLocaleDateString("pt-BR")}
+                            </td>
+                            <td className="px-4 py-3">
+                              <Badge variant="muted">{VEHICLE_LABELS[v.vehicleType]}</Badge>
+                            </td>
+                            <td className="px-4 py-3 text-zinc-700">{v.quantity}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold text-zinc-700">
+                  Motoristas abaixo da cota mínima (3)
+                </h3>
+                <div className="mt-2 overflow-x-auto rounded-lg border bg-white">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-zinc-50 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                        <th className="px-4 py-3">Motorista</th>
+                        <th className="px-4 py-3">Atribuídas</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {distribution.underQuotaDrivers.length === 0 ? (
+                        <tr>
+                          <td colSpan={2} className="px-4 py-6 text-center text-sm text-zinc-400">
+                            Nenhum.
+                          </td>
+                        </tr>
+                      ) : (
+                        distribution.underQuotaDrivers.map((d) => (
+                          <tr key={d.driverProfileId} className="hover:bg-zinc-50">
+                            <td className="px-4 py-3 font-medium text-zinc-900">{d.name}</td>
+                            <td className="px-4 py-3 text-zinc-700">{d.assignedCount}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

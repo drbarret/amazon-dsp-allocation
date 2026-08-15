@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import { prisma } from "@/lib/prisma";
+import { SKIP_INTEGRATION, requireDatabase } from "@/lib/test-db-gate";
 import {
   createVacancy,
   updateVacancy,
@@ -9,7 +10,9 @@ import {
 
 // ---------------------------------------------------------------------------
 // Integration test against a real Postgres database.
-// The suite is skipped automatically when no database is reachable.
+// The database is MANDATORY: if it is unreachable the suite FAILS HIGH.
+// The only legitimate way to skip is SKIP_INTEGRATION_TESTS=1 (set by CI,
+// which has no database) — that marks the suite as skipped, never passed.
 // ---------------------------------------------------------------------------
 
 const { mockAuth } = vi.hoisted(() => ({
@@ -20,18 +23,11 @@ vi.mock("@/lib/auth", () => ({
   auth: mockAuth,
 }));
 
-async function isDatabaseReachable(): Promise<boolean> {
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    return true;
-  } catch {
-    return false;
-  }
-}
+vi.mock("next/cache", () => ({
+  revalidatePath: vi.fn(),
+}));
 
-let dbReachable = false;
-
-describe("dispatch vacancy integration", () => {
+describe.skipIf(SKIP_INTEGRATION)("dispatch vacancy integration", () => {
   const runId = Date.now();
   const email = `integration-supervisor-${runId}@example.com`;
 
@@ -39,7 +35,7 @@ describe("dispatch vacancy integration", () => {
   let supervisorId = "";
   let weekId = "";
   let vacancyId = "";
-  let skipped = false;
+  let dbReady = false;
 
   function session() {
     return {
@@ -53,11 +49,8 @@ describe("dispatch vacancy integration", () => {
   }
 
   beforeAll(async () => {
-    dbReachable = await isDatabaseReachable();
-    if (!dbReachable) {
-      skipped = true;
-      return;
-    }
+    await requireDatabase();
+    dbReady = true;
 
     const company = await prisma.transportCompany.create({
       data: { name: `Integration Company ${runId}` },
@@ -93,7 +86,7 @@ describe("dispatch vacancy integration", () => {
   });
 
   afterAll(async () => {
-    if (!dbReachable) return;
+    if (!dbReady) return;
 
     await prisma.vacancy.deleteMany({ where: { dispatchWeekId: weekId } });
     await prisma.dispatchWeek.deleteMany({ where: { id: weekId } });
@@ -108,8 +101,6 @@ describe("dispatch vacancy integration", () => {
   });
 
   it("creates a vacancy", async () => {
-    if (skipped) return;
-
     const result = await createVacancy({
       dispatchWeekId: weekId,
       date: "2026-08-17",
@@ -124,8 +115,6 @@ describe("dispatch vacancy integration", () => {
   });
 
   it("lists vacancies for the week", async () => {
-    if (skipped) return;
-
     const result = await listVacancies(weekId);
     expect(result.success).toBe(true);
     expect(result.vacancies.length).toBe(1);
@@ -133,8 +122,6 @@ describe("dispatch vacancy integration", () => {
   });
 
   it("updates the vacancy", async () => {
-    if (skipped) return;
-
     const result = await updateVacancy(vacancyId, {
       dispatchWeekId: weekId,
       date: "2026-08-17",
@@ -151,8 +138,6 @@ describe("dispatch vacancy integration", () => {
   });
 
   it("deletes the vacancy and restores counts", async () => {
-    if (skipped) return;
-
     const deleteResult = await deleteVacancy(vacancyId);
     expect(deleteResult.success).toBe(true);
 
