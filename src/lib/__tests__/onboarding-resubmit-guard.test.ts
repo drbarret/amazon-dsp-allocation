@@ -22,6 +22,15 @@ vi.mock("@/lib/audit", () => ({
   writeAuditLog: vi.fn(),
 }));
 
+// completeOnboarding reaches crypto (CPF blind index, field encryption) after
+// the guard. Mock it so the "allows initial submission" path runs in CI
+// without a real FIELD_BLIND_INDEX_KEY / FIELD_ENCRYPTION_KEY.
+vi.mock("@/lib/crypto", () => ({
+  computeCpfBlindIndex: vi.fn(() => "blind-index"),
+  encrypt: vi.fn((v: string) => `enc:${v}`),
+  decrypt: vi.fn((v: string) => v),
+}));
+
 const { completeOnboarding } = await import("@/lib/onboarding");
 
 beforeEach(() => {
