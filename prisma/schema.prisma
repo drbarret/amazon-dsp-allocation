@@ -158,6 +158,7 @@ enum AuditEventType {
   VEHICLE_RESTRICTION_UPDATED
   CNH_UPDATED
   CITY_PREFERENCES_UPDATED
+  VEHICLE_TYPE_UPDATED
 }
 
 // ---------- Core Entities ----------

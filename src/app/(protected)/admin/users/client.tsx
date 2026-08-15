@@ -41,6 +41,7 @@ import {
   revokeInvite,
   updateDriverCnh,
   updateDriverCityPreferences,
+  updateDriverVehicleType,
 } from "./actions";
 import type { UserRow } from "./page";
 import type { UserRole } from "@/generated/prisma";
@@ -72,6 +73,12 @@ const ROLE_BADGE_VARIANT: Record<string, "default" | "success" | "warning" | "mu
   DRIVER: "muted",
 };
 
+const VEHICLE_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: "CARGO_VAN", label: "Cargo Van" },
+  { value: "LARGE_VAN", label: "Large Van" },
+  { value: "PASSEIO", label: "Passeio" },
+];
+
 interface Props {
   users: UserRow[];
   currentUserId: string;
@@ -91,6 +98,7 @@ export function UserManagementClient({ users, currentUserId, roleLabels }: Props
   } | null>(null);
   const [cnhEdit, setCnhEdit] = useState<{ userId: string; userName: string; value: string } | null>(null);
   const [cityEdit, setCityEdit] = useState<{ userId: string; userName: string; selected: string[] } | null>(null);
+  const [vehicleEdit, setVehicleEdit] = useState<{ userId: string; userName: string; value: string } | null>(null);
 
   const filtered = users.filter((u) => {
     const q = search.toLowerCase();
@@ -234,6 +242,26 @@ export function UserManagementClient({ users, currentUserId, roleLabels }: Props
     });
   }
 
+  function handleVehicleSave() {
+    if (!vehicleEdit) return;
+    startTransition(async () => {
+      try {
+        const result = await updateDriverVehicleType(
+          vehicleEdit.userId,
+          vehicleEdit.value,
+        );
+        if (result.success) {
+          toast.success("Categoria de veículo atualizada.");
+          setVehicleEdit(null);
+        } else {
+          toast.error(result.error ?? "Erro ao atualizar categoria de veículo.");
+        }
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao atualizar categoria de veículo.");
+      }
+    });
+  }
+
   return (
     <div className="space-y-6 p-4 sm:p-6">
       {/* Header */}
@@ -275,6 +303,7 @@ export function UserManagementClient({ users, currentUserId, roleLabels }: Props
               <th className="px-4 py-3">Perfil</th>
               <th className="px-4 py-3">CNH</th>
               <th className="px-4 py-3">Cidades</th>
+              <th className="px-4 py-3">Veículo</th>
               <th className="px-4 py-3">Último Acesso</th>
               <th className="px-4 py-3 text-right">Ações</th>
             </tr>
@@ -436,6 +465,37 @@ export function UserManagementClient({ users, currentUserId, roleLabels }: Props
                   )}
                 </td>
 
+                {/* Veículo */}
+                <td className="px-4 py-3">
+                  {user.source === "user" && user.role === "DRIVER" ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-zinc-600">
+                        {VEHICLE_TYPE_OPTIONS.find((o) => o.value === user.vehicleType)?.label ??
+                          user.vehicleType ??
+                          "—"}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-1.5"
+                        onClick={() =>
+                          setVehicleEdit({
+                            userId: user.id,
+                            userName: user.name,
+                            value: user.vehicleType ?? "CARGO_VAN",
+                          })
+                        }
+                        disabled={isPending}
+                        title="Editar categoria de veículo"
+                      >
+                        <PencilIcon className="size-3.5 text-zinc-500" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-zinc-400">—</span>
+                  )}
+                </td>
+
                 {/* Last login */}
                 <td className="px-4 py-3">
                   {user.lastLoginAt ? (
@@ -514,7 +574,7 @@ export function UserManagementClient({ users, currentUserId, roleLabels }: Props
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-sm text-zinc-400">
+                <td colSpan={10} className="px-4 py-8 text-center text-sm text-zinc-400">
                   Nenhum usuário encontrado.
                 </td>
               </tr>
@@ -695,6 +755,49 @@ export function UserManagementClient({ users, currentUserId, roleLabels }: Props
             onClick={handleCitySave}
             disabled={isPending || (cityEdit?.selected.length ?? 0) < 1}
           >
+            {isPending ? "Salvando..." : "Salvar"}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* Vehicle Type Edit Dialog */}
+      <Dialog open={vehicleEdit !== null} onOpenChange={(open) => { if (!open) setVehicleEdit(null); }}>
+        <DialogHeader>
+          <DialogTitle>Editar categoria de veículo</DialogTitle>
+          <DialogDescription>
+            Atualize a categoria de veículo de {vehicleEdit?.userName}. A
+            alocação respeita a categoria com igualdade estrita.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="vehicle-type">Categoria</Label>
+            <Select
+              value={vehicleEdit?.value ?? ""}
+              onValueChange={(v) =>
+                setVehicleEdit((prev) =>
+                  prev ? { ...prev, value: v as string } : prev
+                )
+              }
+            >
+              <SelectTrigger id="vehicle-type" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {VEHICLE_TYPE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setVehicleEdit(null)}>
+            Cancelar
+          </Button>
+          <Button onClick={handleVehicleSave} disabled={isPending || !vehicleEdit?.value}>
             {isPending ? "Salvando..." : "Salvar"}
           </Button>
         </DialogFooter>

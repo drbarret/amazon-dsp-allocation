@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { SKIP_INTEGRATION, requireDatabase } from "@/lib/test-db-gate";
-import { updateDriverCnh, updateDriverCityPreferences } from "../actions";
+import { updateDriverCnh, updateDriverCityPreferences, updateDriverVehicleType } from "../actions";
 import { sendCnhReminders } from "@/lib/cnh-reminder";
 
 // ---------------------------------------------------------------------------
@@ -160,6 +160,14 @@ describe.skipIf(SKIP_INTEGRATION)("supervisor CNH + city edit and reminder integ
     await prisma.regionCityPreference.deleteMany({
       where: { driverProfileId: { in: [driverAProfileId, driverBProfileId] } },
     });
+    await prisma.auditLog.deleteMany({
+      where: {
+        OR: [
+          { targetUserId: { in: [driverAUserId, driverBUserId] } },
+          { actorId: supervisorId },
+        ],
+      },
+    });
     await prisma.user.deleteMany({ where: { id: driverAUserId } });
     await prisma.user.deleteMany({ where: { id: driverBUserId } });
     await prisma.user.deleteMany({ where: { id: supervisorId } });
@@ -203,6 +211,14 @@ describe.skipIf(SKIP_INTEGRATION)("supervisor CNH + city edit and reminder integ
     await prisma.driverProfile.update({
       where: { id: driverBProfileId },
       data: { cnhExpiration: CNH_B },
+    });
+    await prisma.driverProfile.update({
+      where: { id: driverAProfileId },
+      data: { vehicleType: "CARGO_VAN" },
+    });
+    await prisma.driverProfile.update({
+      where: { id: driverBProfileId },
+      data: { vehicleType: "CARGO_VAN" },
     });
   });
 
@@ -269,6 +285,59 @@ describe.skipIf(SKIP_INTEGRATION)("supervisor CNH + city edit and reminder integ
     const result = await updateDriverCityPreferences(supervisorId, ["Jundiaí"]);
     expect(result.success).toBe(false);
     expect(result.error).toContain("próprias cidades");
+  });
+
+  it("supervisor edits a driver's vehicle category successfully", async () => {
+    const result = await updateDriverVehicleType(driverAUserId, "LARGE_VAN");
+    expect(result).toEqual({ success: true });
+
+    const profile = await prisma.driverProfile.findUniqueOrThrow({
+      where: { id: driverAProfileId },
+      select: { vehicleType: true },
+    });
+    expect(profile.vehicleType).toBe("LARGE_VAN");
+  });
+
+  it("a value outside the VehicleType enum is refused on the server", async () => {
+    const result = await updateDriverVehicleType(driverAUserId, "MOTO");
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("inválido");
+
+    // The stored value is unchanged.
+    const profile = await prisma.driverProfile.findUniqueOrThrow({
+      where: { id: driverAProfileId },
+      select: { vehicleType: true },
+    });
+    expect(profile.vehicleType).toBe("CARGO_VAN");
+  });
+
+  it("a driver cannot edit their own vehicle category (self-edit guard)", async () => {
+    const result = await updateDriverVehicleType(supervisorId, "LARGE_VAN");
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("própria categoria");
+  });
+
+  it("vehicle-type edit is audited with author and old/new values", async () => {
+    // Reset to a known baseline first.
+    await prisma.driverProfile.update({
+      where: { id: driverAProfileId },
+      data: { vehicleType: "CARGO_VAN" },
+    });
+
+    const result = await updateDriverVehicleType(driverAUserId, "PASSEIO");
+    expect(result).toEqual({ success: true });
+
+    const audit = await prisma.auditLog.findFirst({
+      where: {
+        eventType: "VEHICLE_TYPE_UPDATED",
+        targetUserId: driverAUserId,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(audit).not.toBeNull();
+    expect(audit!.actorId).toBe(supervisorId);
+    expect(audit!.oldValue).toEqual({ vehicleType: "CARGO_VAN" });
+    expect(audit!.newValue).toEqual({ vehicleType: "PASSEIO" });
   });
 
   it("reminder: 30-day driver enters, 60-day driver does not, idempotent", async () => {

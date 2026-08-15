@@ -7,7 +7,7 @@ import { roleIsAtLeast } from "@/lib/authz";
 import { validateCityPreferences } from "@/lib/onboarding";
 import { isValidCnhDate } from "@/lib/cnh-validation";
 import { revalidatePath } from "next/cache";
-import type { UserRole } from "@/generated/prisma";
+import type { UserRole, VehicleType } from "@/generated/prisma";
 
 const ALLOWED_ROLES: UserRole[] = ["DRIVER", "SUPERVISOR", "ACCOUNT_MANAGER", "ADMIN"];
 
@@ -457,6 +457,71 @@ export async function updateDriverCityPreferences(
     targetUserId,
     oldValue: { cities: oldValue },
     newValue: { cities },
+  });
+
+  revalidatePath("/admin/users");
+  return { success: true };
+}
+
+/** The vehicle categories a driver may be assigned. */
+const VALID_VEHICLE_TYPES: VehicleType[] = ["CARGO_VAN", "LARGE_VAN", "PASSEIO"];
+
+/**
+ * Supervisor (or above) updates a driver's vehicle category.
+ *
+ * Server-side validation only — a forged request is refused here, never in
+ * the client. The value must belong to the VehicleType enum; the client is
+ * never trusted. A driver cannot edit their own vehicle category.
+ */
+export async function updateDriverVehicleType(
+  targetUserId: string,
+  vehicleType: string,
+) {
+  const session = await requireSupervisorOrAbove();
+  const actorId = session.user.id;
+
+  if (targetUserId === actorId) {
+    return {
+      success: false,
+      error: "Você não pode editar a própria categoria de veículo.",
+    };
+  }
+
+  if (!(VALID_VEHICLE_TYPES as string[]).includes(vehicleType)) {
+    return { success: false, error: "Tipo de veículo inválido." };
+  }
+
+  const target = await prisma.user.findUnique({
+    where: { id: targetUserId },
+    select: {
+      id: true,
+      role: true,
+      driverProfile: { select: { id: true, vehicleType: true } },
+    },
+  });
+  if (!target) {
+    return { success: false, error: "Usuário não encontrado." };
+  }
+  if (target.role !== "DRIVER" || !target.driverProfile) {
+    return {
+      success: false,
+      error: "O usuário alvo não é um motorista com perfil cadastrado.",
+    };
+  }
+
+  const oldValue = target.driverProfile.vehicleType;
+
+  await prisma.driverProfile.update({
+    where: { id: target.driverProfile.id },
+    data: { vehicleType: vehicleType as VehicleType },
+  });
+
+  await writeAuditLog({
+    eventType: "VEHICLE_TYPE_UPDATED",
+    actorId,
+    targetUserId,
+    oldValue: { vehicleType: oldValue },
+    newValue: { vehicleType: vehicleType as VehicleType },
   });
 
   revalidatePath("/admin/users");

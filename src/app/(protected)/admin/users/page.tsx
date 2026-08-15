@@ -18,6 +18,7 @@ export interface UserRow {
   allowedEmailStatus?: string;
   cnhExpiration?: string | null;
   cityPreferences?: string[];
+  vehicleType?: string | null;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -43,6 +44,7 @@ export default async function AdminUsersPage() {
         select: {
           onboardingCompleted: true,
           cnhExpiration: true,
+          vehicleType: true,
           regionPreferences: {
             select: { city: true, priority: true },
             orderBy: { priority: "asc" },
@@ -79,6 +81,7 @@ export default async function AdminUsersPage() {
     cityPreferences: (u.driverProfile?.regionPreferences ?? [])
       .filter((p) => p.city)
       .map((p) => p.city as string),
+    vehicleType: u.driverProfile?.vehicleType ?? null,
   }));
 
   for (const invite of invites) {
