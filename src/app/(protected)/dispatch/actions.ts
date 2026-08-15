@@ -11,7 +11,7 @@ import {
   applyPunishmentsToDrivers,
   resolvePunishmentOutcomes,
 } from "@/lib/behavior-distribution";
-import { addWeeks } from "@/lib/behavior";
+import { addWeeks, selectInfractionsToEscalate } from "@/lib/behavior";
 import type { UserRole, VehicleType } from "@/generated/prisma";
 
 const VEHICLE_TYPES: VehicleType[] = ["CARGO_VAN", "LARGE_VAN", "PASSEIO"];
@@ -495,6 +495,43 @@ export async function runDistribution(
         });
       }
     }
+  }
+
+  // Escalate recidivism warnings on this new distribution cycle. The trigger
+  // is the CYCLE EVENT, not elapsed time: if a new cycle runs and the
+  // supervisor still has not decided (deactivated the driver), the warning
+  // escalates to the account managers. Idempotent: an infraction already
+  // escalated (escalatedAt set) is never escalated again, so running the same
+  // or a later cycle never escalates the same infraction twice.
+  const activeDriverProfileIdSet = new Set(drivers.map((d) => d.driverProfileId));
+  const pendingEscalations = await prisma.driverInfraction.findMany({
+    where: {
+      driverProfileId: { in: companyDriverProfileIds },
+      supervisorNotifiedAt: { not: null },
+      escalatedAt: null,
+    },
+    select: {
+      id: true,
+      driverProfileId: true,
+      supervisorNotifiedAt: true,
+      escalatedAt: true,
+      status: true,
+    },
+  });
+  const toEscalate = selectInfractionsToEscalate(
+    pendingEscalations,
+    activeDriverProfileIdSet
+  );
+  for (const infractionId of toEscalate) {
+    await prisma.driverInfraction.update({
+      where: { id: infractionId },
+      data: { escalatedAt: new Date() },
+    });
+    await writeAuditLog({
+      eventType: "RECIDIVISM_ESCALATED",
+      actorId,
+      metadata: { infractionId, trigger: "distribution_cycle" },
+    });
   }
 
   // Audit: who ran it and how many vacancies were assigned.

@@ -7,9 +7,13 @@
  *
  * Env vars:
  *   - RESEND_API_KEY  — Resend API key (required to actually send).
- *   - EMAIL_FROM      — sender address, e.g. "Amazon DSP <no-reply@example.com>".
+ *   - EMAIL_FROM      — sender address, e.g. "TRC Brasil <trc-brasil@instalog.com.br>".
  *   - EMAIL_TO_OVERRIDE — optional; when set, ALL emails are redirected to this
  *     address (used for testing — never send to real drivers during dev).
+ *
+ * The sender domain (instalog.com.br) must be verified in the Resend account
+ * before emails can be delivered. The default fallback below is the TRC
+ * (Transportation Risk and Compliance) mailbox on that domain.
  */
 
 export interface EmailResult {
@@ -21,7 +25,7 @@ export interface EmailResult {
 
 function getConfig() {
   const apiKey = process.env.RESEND_API_KEY?.trim();
-  const from = process.env.EMAIL_FROM?.trim() || "Amazon DSP <no-reply@amazon-dsp-allocation.vercel.app>";
+  const from = process.env.EMAIL_FROM?.trim() || "TRC Brasil <trc-brasil@instalog.com.br>";
   const toOverride = process.env.EMAIL_TO_OVERRIDE?.trim();
   return { apiKey, from, toOverride };
 }

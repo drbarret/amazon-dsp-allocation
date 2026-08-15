@@ -578,8 +578,8 @@ model FavoriteDriver {
 //   - Recidivism (a new mark while a punishment is ACTIVE or within
 //     RECIDIVISM_WINDOW_WEEKS after fulfillment) doubles the punishment
 //     (multiplier = 2) and triggers a warning to the supervisor; if the
-//     supervisor does not deactivate within ESCALATION_DAYS, the account
-//     managers are notified.
+//     supervisor does not deactivate, the next distribution cycle escalates
+//     the warning to the account managers (see selectInfractionsToEscalate).
 model DriverInfraction {
   id               String          @id @default(uuid())
   driverProfileId  String

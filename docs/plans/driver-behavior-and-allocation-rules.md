@@ -117,6 +117,81 @@ Amazon dos motoristas. O e-mail é a chave de acesso ao sistema.
 
 ---
 
+## 7. Decisões confirmadas em 2026-08-15
+
+> Atualização autoritativa. Itens A–F abaixo fecham decisões que estavam
+> abertas. Nenhum número novo foi inventado; tudo foi confirmado pelo usuário.
+
+### A. Teto de vagas por motorista: NÃO EXISTE
+
+O sistema tenta distribuir **ao menos 3 vagas por motorista** no ciclo 1, mas
+semanas em que nem todos alcançam o mínimo de 3 são **aceitáveis e esperadas**.
+Isso **não é um bug**: o algoritmo de distribuição já se comporta assim e não
+deve ser alterado. Quem vir "motorista com menos de 3 vagas" não deve tratar
+como falha.
+
+### B. Janela de reincidência: 4 semanas, depois zera
+
+A janela de reincidência é de **4 semanas** (`RECIDIVISM_WINDOW_WEEKS = 4` em
+`src/lib/behavior.ts`). Uma nova marcação conta como reincidência se houver
+punição **ativa** ou se a última punição cumprida estiver **dentro de 4 semanas**
+(`isRecidivismMark` compara `now - lastFulfilledAt <= 4 * 7 dias`). Depois de 4
+semanas, o contador **zera** e o motorista volta a competir em igualdade. O
+código já implementa exatamente isso — apenas documentado aqui.
+
+### C. Escalonamento supervisor → gerente de conta: gatilho por CICLO
+
+O gatilho de escalonamento **deixou de ser tempo em dias** e passou a ser
+**evento de ciclo de distribuição**:
+
+> Se chegar o próximo ciclo de distribuição e o supervisor não decidiu, sobe.
+
+- **Momento exato do disparo:** dentro de `runDistribution`
+  (`src/app/(protected)/dispatch/actions.ts`), após a distribuição e a
+  resolução de punições do ciclo. Quando um novo ciclo roda, toda infração de
+  reincidência ainda **pendente de decisão do supervisor** é escalada aos
+  gerentes de conta.
+- **O que é "pendente de decisão":** a infração tem `supervisorNotifiedAt`
+  preenchido (aviso de reincidência enviado), ainda **não** foi escalada
+  (`escalatedAt` nulo), não está `CANCELLED`, e o motorista **continua ativo**
+  (o supervisor não o desativou — desativar é a decisão que o aviso pede).
+- **Idempotência:** ao escalar, o sistema grava `escalatedAt`. Rodar a
+  distribuição duas vezes no mesmo ciclo, ou em ciclos seguintes, **nunca**
+  escala a mesma infração duas vezes.
+- O prazo fixo de 7 dias (`ESCALATION_DAYS`) e a função `isEscalationDue`
+  foram **removidos** — não fazem mais sentido e não devem coexistir com o
+  gatilho por ciclo. A ação manual `escalateRecidivism` permanece apenas como
+  fallback para o gerente de conta.
+
+### D. Remetente de e-mail
+
+- Domínio: `instalog.com.br`.
+- Endereço remetente: `trc-brasil@instalog.com.br` (TRC = Transportation Risk
+  and Compliance).
+- O fallback fixo em `src/lib/email.ts` foi atualizado para esse endereço
+  (antes apontava para um domínio da Vercel que o Resend não aceitaria).
+- O domínio precisa estar **verificado na conta do Resend** para o envio
+  funcionar. Nenhuma chave de API é commitada.
+
+### E. CRLV e cadastro de veículo: FASE 2 (fora do escopo atual)
+
+Planejado para a segunda fase — **não implementado nesta tarefa**:
+
+- Campos: **PLACA, ANO DE FABRICAÇÃO, ANO MODELO, EXERCÍCIO, CHASSI**.
+- Critério de aceitação do veículo: **idade máxima de 15 anos**.
+- O motorista envia o documento no onboarding.
+- Avisos por e-mail previstos: CRLV vencido, CRLV pendente de licenciamento,
+  ano do veículo fora do critério.
+
+### F. Pendência operacional: tipo de veículo
+
+A importação gravou `vehicleType = CARGO_VAN` fixo para todos, então os 83
+motoristas ativos estão **todos na mesma categoria**. A regra de categoria
+estrita do algoritmo está correta, mas fica **inócua** até os tipos reais serem
+cadastrados. A tela de edição pelo supervisor virá em tarefa separada.
+
+---
+
 ## Referências
 
 - Decisões originais do usuário:

@@ -13,7 +13,6 @@ import {
   computeEffectiveWeek,
   computeMultiplier,
   isRecidivismMark,
-  isEscalationDue,
   describePunishment,
 } from "@/lib/behavior";
 
@@ -248,8 +247,9 @@ export async function rejectInfraction(infractionId: string) {
 }
 
 /**
- * Escalate a recidivism warning to the account managers. Called when the
- * supervisor was notified but has not deactivated within ESCALATION_DAYS.
+ * Escalate a recidivism warning to the account managers. Escalation is
+ * normally triggered automatically by the next distribution cycle (see
+ * runDistribution); this action is a manual fallback for an account manager.
  */
 export async function escalateRecidivism(infractionId: string) {
   const session = await requireAccountManagerPlus();
@@ -283,7 +283,7 @@ export async function escalateRecidivism(infractionId: string) {
 
 const infractionInclude = {
   driverProfile: {
-    include: { user: { select: { id: true, name: true, email: true } } },
+    include: { user: { select: { id: true, name: true, email: true, active: true } } },
   },
   markedBy: { select: { id: true, name: true } },
   approvedBy: { select: { id: true, name: true } },
@@ -316,7 +316,6 @@ export async function listInfractions() {
     orderBy: { createdAt: "desc" },
   });
 
-  const now = new Date();
   const data = infractions.map((i) => ({
     id: i.id,
     type: i.type,
@@ -337,7 +336,13 @@ export async function listInfractions() {
     fulfilledAt: i.fulfilledAt?.toISOString() ?? null,
     supervisorNotifiedAt: i.supervisorNotifiedAt?.toISOString() ?? null,
     escalatedAt: i.escalatedAt?.toISOString() ?? null,
-    escalationDue: isEscalationDue(i.supervisorNotifiedAt, now) && !i.escalatedAt,
+    // Escalation is triggered by the next distribution cycle, not by elapsed
+    // time. A warning is "pending escalation" while the supervisor has not
+    // decided (driver still active) and it has not been escalated yet.
+    escalationDue:
+      i.supervisorNotifiedAt != null &&
+      i.escalatedAt == null &&
+      i.driverProfile.user.active,
   }));
 
   const approvalQueue = data.filter((i) => i.status === "PENDING_APPROVAL");

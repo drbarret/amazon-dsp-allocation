@@ -136,11 +136,15 @@ constraint única no banco).
 | Variável | Obrigatória | Descrição |
 |----------|-------------|-----------|
 | `RESEND_API_KEY` | Não* | Chave da API do Resend. Sem ela o sistema **degrada com log claro** e não envia e-mails (nenhuma quebra). |
-| `EMAIL_FROM` | Não | Remetente autorizado no domínio do Resend. |
+| `EMAIL_FROM` | Não | Remetente autorizado no domínio do Resend. Padrão: `TRC Brasil <trc-brasil@instalog.com.br>`. |
 | `EMAIL_TO_OVERRIDE` | Não | Redireciona todos os e-mails para um endereço de teste. |
 | `CRON_SECRET` | Sim (para disparo) | Token que protege o endpoint de disparo. |
 
 \* Sem `RESEND_API_KEY` o aviso não é enviado, mas o sistema continua funcionando.
+
+> **Domínio do remetente:** o domínio `instalog.com.br` precisa estar **verificado
+> na conta do Resend** para que os e-mails sejam entregues. O remetente padrão é
+> `trc-brasil@instalog.com.br` (TRC = Transportation Risk and Compliance).
 
 ### Como o disparo acontece
 

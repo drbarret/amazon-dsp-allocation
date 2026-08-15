@@ -5,12 +5,11 @@ import {
   computeEffectiveWeek,
   computeMultiplier,
   isRecidivismMark,
-  isEscalationDue,
+  selectInfractionsToEscalate,
   isLoseVacancyFulfilled,
   isNoVacanciesWeekFulfilled,
   describePunishment,
   RECIDIVISM_WINDOW_WEEKS,
-  ESCALATION_DAYS,
 } from "@/lib/behavior";
 import {
   applyPunishmentsToDrivers,
@@ -253,23 +252,69 @@ describe("recidivism doubles the punishment", () => {
 // ---------------------------------------------------------------------------
 // Recidivism warning to supervisor and escalation to managers (spec §3.4)
 // ---------------------------------------------------------------------------
-describe("recidivism warning and escalation", () => {
-  it("escalation is not due before the deadline", () => {
-    const now = new Date("2026-08-15");
-    const notified = new Date(now.getTime() - 1 * 24 * 3600 * 1000); // 1 day ago
-    expect(isEscalationDue(notified, now)).toBe(false);
+describe("recidivism warning and escalation by distribution cycle", () => {
+  const candidate = (overrides: Record<string, unknown> = {}) => ({
+    id: "inf-esc",
+    driverProfileId: "driver-1",
+    supervisorNotifiedAt: new Date("2026-08-15"),
+    escalatedAt: null,
+    status: "ACTIVE",
+    ...overrides,
   });
 
-  it("escalation is due after ESCALATION_DAYS without supervisor action", () => {
-    const now = new Date("2026-08-15");
-    const notified = new Date(
-      now.getTime() - (ESCALATION_DAYS + 1) * 24 * 3600 * 1000
+  it("escalates a pending warning when a new cycle runs", () => {
+    const ids = selectInfractionsToEscalate(
+      [candidate()],
+      new Set(["driver-1"])
     );
-    expect(isEscalationDue(notified, now)).toBe(true);
+    expect(ids).toEqual(["inf-esc"]);
   });
 
-  it("escalation is not due when the supervisor was never notified", () => {
-    expect(isEscalationDue(null, new Date())).toBe(false);
+  it("does NOT escalate when the supervisor was never notified", () => {
+    const ids = selectInfractionsToEscalate(
+      [candidate({ supervisorNotifiedAt: null })],
+      new Set(["driver-1"])
+    );
+    expect(ids).toEqual([]);
+  });
+
+  it("does NOT escalate an infraction already escalated (idempotency)", () => {
+    const ids = selectInfractionsToEscalate(
+      [candidate({ escalatedAt: new Date("2026-08-16") })],
+      new Set(["driver-1"])
+    );
+    expect(ids).toEqual([]);
+  });
+
+  it("does NOT escalate a CANCELLED infraction", () => {
+    const ids = selectInfractionsToEscalate(
+      [candidate({ status: "CANCELLED" })],
+      new Set(["driver-1"])
+    );
+    expect(ids).toEqual([]);
+  });
+
+  it("does NOT escalate when the supervisor decided (driver deactivated)", () => {
+    // The driver is no longer active → the supervisor decided (deactivated).
+    const ids = selectInfractionsToEscalate(
+      [candidate()],
+      new Set(["other-driver"])
+    );
+    expect(ids).toEqual([]);
+  });
+
+  it("escalates only the pending ones among a mixed set", () => {
+    const ids = selectInfractionsToEscalate(
+      [
+        candidate({ id: "a" }),
+        candidate({ id: "b", escalatedAt: new Date() }),
+        candidate({ id: "c", supervisorNotifiedAt: null }),
+        candidate({ id: "d", status: "CANCELLED" }),
+        candidate({ id: "e", driverProfileId: "inactive-driver" }),
+      ],
+      new Set(["driver-1"])
+    );
+    expect(ids).toEqual(["a"]);
   });
 });
 

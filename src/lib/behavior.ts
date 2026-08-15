@@ -18,7 +18,8 @@
  *   - Recidivism (a new mark while a punishment is ACTIVE or within
  *     RECIDIVISM_WINDOW_WEEKS after fulfillment) doubles the punishment and
  *     triggers a supervisor warning; if the supervisor does not deactivate
- *     within ESCALATION_DAYS, the account managers are notified.
+ *     the driver, the next distribution cycle escalates the warning to the
+ *     account managers (see selectInfractionsToEscalate).
  */
 import type { InfractionType } from "@/generated/prisma";
 
@@ -98,17 +99,6 @@ export function getInfractionRule(type: InfractionType): InfractionTypeRule {
  */
 export const RECIDIVISM_WINDOW_WEEKS = 4;
 
-/**
- * Escalation deadline: after a recidivism warning is sent to the supervisor,
- * if the supervisor has not deactivated the driver within this many days, the
- * account managers are notified.
- *
- * Justification: 7 days gives the supervisor a full business week to review
- * the case and act, while not leaving a repeat offender unaddressed for too
- * long. It is long enough to be fair, short enough to escalate promptly.
- */
-export const ESCALATION_DAYS = 7;
-
 /** Milliseconds in a day. */
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -165,16 +155,46 @@ export function isRecidivismMark(
 }
 
 /**
- * Whether a recidivism warning should be escalated to the account managers.
- * Escalation happens when the supervisor was notified but has not deactivated
- * the driver within ESCALATION_DAYS.
+ * A recidivism warning that may be escalated to the account managers when a
+ * new distribution cycle runs.
  */
-export function isEscalationDue(
-  supervisorNotifiedAt: Date | null,
-  now: Date
-): boolean {
-  if (!supervisorNotifiedAt) return false;
-  return now.getTime() - supervisorNotifiedAt.getTime() >= ESCALATION_DAYS * DAY_MS;
+export interface EscalationCandidate {
+  id: string;
+  driverProfileId: string;
+  supervisorNotifiedAt: Date | null;
+  escalatedAt: Date | null;
+  status: string;
+}
+
+/**
+ * Select which recidivism warnings should be escalated when a new
+ * distribution cycle runs.
+ *
+ * The trigger is the CYCLE EVENT, not elapsed time: when a new distribution
+ * cycle happens and the supervisor still has not decided (i.e. has not
+ * deactivated the driver), the warning escalates to the account managers.
+ *
+ * An infraction escalates only when ALL of these hold:
+ *   - the supervisor was notified (recidivism warning sent);
+ *   - it has not already been escalated (idempotency — running the same or a
+ *     later cycle never escalates the same infraction twice);
+ *   - it is not CANCELLED;
+ *   - the driver is still active (the supervisor has not deactivated them,
+ *     which is the decision the warning asks for).
+ */
+export function selectInfractionsToEscalate(
+  infractions: EscalationCandidate[],
+  activeDriverProfileIds: ReadonlySet<string>
+): string[] {
+  return infractions
+    .filter(
+      (i) =>
+        i.supervisorNotifiedAt != null &&
+        i.escalatedAt == null &&
+        i.status !== "CANCELLED" &&
+        activeDriverProfileIds.has(i.driverProfileId)
+    )
+    .map((i) => i.id);
 }
 
 /**
