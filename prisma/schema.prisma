@@ -81,11 +81,27 @@ enum ScorecardClassification {
   POOR
 }
 
-enum BehaviorType {
-  ADVERTENCIA
-  SUSPENSAO_ALOCACAO
-  PENALIDADE_PONTUACAO
-  EXCECAO // excepcional override aprovado pelo supervisor
+// The 5 infraction types defined by the user (2026-08-14). The punishment is
+// determined by the TYPE, never by the supervisor. See
+// docs/plans/driver-behavior-and-allocation-rules.md §3.1.
+enum InfractionType {
+  NAO_REVERTER_INSUCESSOS // objetivo — perde 1 vaga
+  RECLAMACAO_ASPERA // subjetivo — perde 1 vaga (exige aprovação do gerente)
+  FALTAS_RECORRENTES // objetivo — perde 1 vaga
+  ABANDONO_ROTA // grave — 1 semana sem vagas
+  DESCUMPRIR_REGRAS_AMAZON // misto — perde 1 vaga
+}
+
+// Lifecycle of an infraction/punishment.
+//   PENDING_APPROVAL — only for RECLAMACAO_ASPERA; waits for account manager.
+//   ACTIVE           — punishment is in force (applies to the effective week).
+//   FULFILLED        — the driver actually lost the vacancy / served the week.
+//   CANCELLED        — account manager rejected the subjective mark.
+enum InfractionStatus {
+  PENDING_APPROVAL
+  ACTIVE
+  FULFILLED
+  CANCELLED
 }
 
 enum DispatchWeekStatus {
@@ -130,6 +146,12 @@ enum AuditEventType {
   SCORECARD_IMPORTED
   BEHAVIOR_RECORD_CREATED
   BEHAVIOR_RECORD_UPDATED
+  INFRACTION_MARKED
+  INFRACTION_APPROVED
+  INFRACTION_REJECTED
+  INFRACTION_FULFILLED
+  RECIDIVISM_WARNING
+  RECIDIVISM_ESCALATED
   MANUAL_OVERRIDE
   CONSENT_GIVEN
   CONSENT_REVOKED
@@ -192,6 +214,11 @@ model User {
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
+  // Who deactivated this user (for the "who deactivates determines who can
+  // reactivate" rule). Null when the user has never been deactivated.
+  deactivatedById   String?
+  deactivatedByRole UserRole?
+
   transportCompany TransportCompany?    @relation(fields: [transportCompanyId], references: [id])
   driverProfile    DriverProfile?
   availabilities   WeeklyAvailability[]
@@ -203,9 +230,10 @@ model User {
   sessions         Session[]
   allowedEmails    AllowedEmail[] @relation("InvitedBy")
 
-  // User-confirmed: supervisors mark behavior, account managers approve it.
-  behaviorMarks     BehaviorRecord[] @relation("BehaviorMarkedBy")
-  behaviorApprovals BehaviorRecord[] @relation("BehaviorApprovedBy")
+  // User-confirmed: supervisors mark infractions, account managers approve
+  // the subjective type (RECLAMACAO_ASPERA).
+  infractionsMarked   DriverInfraction[] @relation("InfractionMarkedBy")
+  infractionsApproved DriverInfraction[] @relation("InfractionApprovedBy")
 
   // User-confirmed: account managers mark favorites manually.
   manualFavoriteOverrides FavoriteDriver[] @relation("FavoriteManualOverrideBy")
@@ -228,9 +256,6 @@ model DriverProfile {
   onboardingCompleted Boolean     @default(false)
   cnhExpiration       DateTime? // CNH expiry date; null = unknown/not set
 
-  // User-confirmed: deactivate after 3 approved behavior marks.
-  behaviorApprovedCount Int @default(0)
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -238,7 +263,7 @@ model DriverProfile {
   vehicleRestrictions VehicleRestriction[]
   regionPreferences   RegionCityPreference[]
   favoriteFlags       FavoriteDriver[]
-  behaviorRecords     BehaviorRecord[]
+  infractions         DriverInfraction[]
   driverScores        DriverScore[]
   assignments         DispatchAssignment[]
 
@@ -514,38 +539,62 @@ model FavoriteDriver {
   @@map("favorite_drivers")
 }
 
-model BehaviorRecord {
-  id              String       @id @default(uuid())
-  driverProfileId String
-  type            BehaviorType
-  description     String
-  severity        Int          @default(1) // 1 light, 5 severe
+// A behavior infraction marked by a supervisor. The punishment is derived
+// from the TYPE (never chosen by the supervisor). See
+// docs/plans/driver-behavior-and-allocation-rules.md §3.
+//
+// Lifecycle:
+//   - RECLAMACAO_ASPERA starts PENDING_APPROVAL and only becomes ACTIVE after
+//     an account manager approves it. The other 4 types start ACTIVE.
+//   - The punishment applies to the effective week (the week AFTER the one
+//     the infraction was marked for).
+//   - "Perde N vagas" (LOSE_VACANCY) is only FULFILLED when the driver
+//     actually receives at least one vacancy in the effective week; if the
+//     driver gets none, the punishment stays ACTIVE and rolls to the next
+//     week (it never expires on its own).
+//   - "N semanas sem vagas" (NO_VACANCIES_WEEK) is FULFILLED after the driver
+//     is excluded for `multiplier` consecutive effective weeks.
+//   - Recidivism (a new mark while a punishment is ACTIVE or within
+//     RECIDIVISM_WINDOW_WEEKS after fulfillment) doubles the punishment
+//     (multiplier = 2) and triggers a warning to the supervisor; if the
+//     supervisor does not deactivate within ESCALATION_DAYS, the account
+//     managers are notified.
+model DriverInfraction {
+  id               String          @id @default(uuid())
+  driverProfileId  String
+  type             InfractionType
+  observation      String?
+  weekKey          String // week the infraction was marked for
+  effectiveWeekKey String // week the punishment currently applies to
 
-  // User-confirmed workflow: supervisor marks, account manager approves,
-  // penalty is applied to next week's planning, then reset.
-  weekKey           String // week the behavior was recorded for
-  effectiveFromWeek String // week the penalty takes effect (usually next week)
-  effectiveToWeek   String? // null = until reset
-  status            String  @default("PENDING") // PENDING, APPROVED, APPLIED, RESET
-  impactScore       Float   @default(0) // points to subtract from priority
+  // Date range of the current effective week, so the distribution engine can
+  // match by overlap regardless of weekKey string format.
+  effectiveStartDate DateTime @db.Date
+  effectiveEndDate   DateTime @db.Date
 
-  markedById   String? // supervisor who flagged the behavior
-  approvedById String? // account manager who approved the penalty
+  status     InfractionStatus @default(PENDING_APPROVAL)
+  multiplier Int              @default(1) // 1 or 2 (recidivism doubles)
+  weeksServed Int             @default(0) // for NO_VACANCIES_WEEK
+
+  markedById   String?
+  approvedById String?
   approvedAt   DateTime?
-  appliedAt    DateTime? // when the penalty affected planning
-  resetAt      DateTime? // when the penalty was reset after application
+  fulfilledAt  DateTime?
+
+  // Recidivism warning / escalation timestamps.
+  supervisorNotifiedAt DateTime?
+  escalatedAt          DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   driverProfile DriverProfile @relation(fields: [driverProfileId], references: [id], onDelete: Cascade)
-  markedBy      User?         @relation("BehaviorMarkedBy", fields: [markedById], references: [id], onDelete: SetNull)
-  approvedBy    User?         @relation("BehaviorApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  markedBy      User?         @relation("InfractionMarkedBy", fields: [markedById], references: [id], onDelete: SetNull)
+  approvedBy    User?         @relation("InfractionApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
 
-  @@index([driverProfileId, effectiveFromWeek])
-  @@index([type, effectiveFromWeek])
+  @@index([driverProfileId, effectiveStartDate, effectiveEndDate])
   @@index([status])
-  @@map("behavior_records")
+  @@map("driver_infractions")
 }
 
 // ---------- Dispatch / Weekly vacancy planning ----------

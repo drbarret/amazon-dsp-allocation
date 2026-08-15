@@ -31,6 +31,7 @@ const mockPrisma = {
     findUnique: vi.fn(),
     update: vi.fn(),
     create: vi.fn(),
+    updateMany: vi.fn(),
   },
   auditLog: {
     create: vi.fn(),
@@ -87,16 +88,26 @@ describe("4d: Server action authorization gate", () => {
       );
     });
 
-    it("deactivateUser throws 'Permissão insuficiente.'", async () => {
-      await expect(deactivateUser("target-id")).rejects.toThrow(
-        "Permissão insuficiente."
-      );
+    it("deactivateUser returns 'Permissão insuficiente.'", async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: "target-id",
+        role: "DRIVER",
+        active: true,
+        email: "driver@instalog.com.br",
+      });
+      const result = await deactivateUser("target-id");
+      expect(result).toEqual({ success: false, error: "Permissão insuficiente." });
     });
 
-    it("reactivateUser throws 'Permissão insuficiente.'", async () => {
-      await expect(reactivateUser("target-id")).rejects.toThrow(
-        "Permissão insuficiente."
-      );
+    it("reactivateUser returns 'Permissão insuficiente.'", async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: "target-id",
+        active: false,
+        email: "driver@instalog.com.br",
+        deactivatedByRole: "SUPERVISOR",
+      });
+      const result = await reactivateUser("target-id");
+      expect(result).toEqual({ success: false, error: "Permissão insuficiente." });
     });
 
     it("inviteUser throws 'Permissão insuficiente.'", async () => {
@@ -113,7 +124,8 @@ describe("4d: Server action authorization gate", () => {
   });
 
   // -----------------------------------------------------------------------
-  // SUPERVISOR — should be refused for ALL admin actions
+  // SUPERVISOR — refused for admin-only actions; allowed to deactivate/reactivate
+  // DRIVERs per rule 9 (who deactivates determines who can reactivate).
   // -----------------------------------------------------------------------
   describe("SUPERVISOR session", () => {
     beforeEach(() => {
@@ -126,16 +138,67 @@ describe("4d: Server action authorization gate", () => {
       );
     });
 
-    it("deactivateUser throws 'Permissão insuficiente.'", async () => {
-      await expect(deactivateUser("target-id")).rejects.toThrow(
-        "Permissão insuficiente."
+    it("deactivateUser refuses a non-DRIVER target", async () => {
+      // A supervisor may only deactivate DRIVERs (rule 9).
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: "target-id",
+        role: "SUPERVISOR",
+        active: true,
+        email: "sup@instalog.com.br",
+      });
+      const result = await deactivateUser("target-id");
+      expect(result).toEqual({ success: false, error: "Permissão insuficiente." });
+    });
+
+    it("deactivateUser allows a DRIVER target", async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: "target-id",
+        role: "DRIVER",
+        active: true,
+        email: "driver@instalog.com.br",
+      });
+      mockPrisma.user.count.mockResolvedValue(2);
+      mockPrisma.user.update.mockResolvedValue({});
+      mockPrisma.allowedEmail.updateMany.mockResolvedValue({ count: 1 });
+      const result = await deactivateUser("target-id");
+      expect(result).toEqual({ success: true });
+      // The deactivator must be recorded for the reactivation rule.
+      expect(mockPrisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            active: false,
+            deactivatedByRole: "SUPERVISOR",
+          }),
+        })
       );
     });
 
-    it("reactivateUser throws 'Permissão insuficiente.'", async () => {
-      await expect(reactivateUser("target-id")).rejects.toThrow(
-        "Permissão insuficiente."
-      );
+    it("reactivateUser refuses a target deactivated by an account manager", async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: "target-id",
+        active: false,
+        email: "driver@instalog.com.br",
+        deactivatedByRole: "ACCOUNT_MANAGER",
+      });
+      const result = await reactivateUser("target-id");
+      expect(result).toEqual({
+        success: false,
+        error:
+          "Este usuário foi desativado por um gerente de contas. Somente um gerente de contas ou administrador pode reativá-lo.",
+      });
+    });
+
+    it("reactivateUser allows a target deactivated by a supervisor", async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: "target-id",
+        active: false,
+        email: "driver@instalog.com.br",
+        deactivatedByRole: "SUPERVISOR",
+      });
+      mockPrisma.user.update.mockResolvedValue({});
+      mockPrisma.allowedEmail.updateMany.mockResolvedValue({ count: 1 });
+      const result = await reactivateUser("target-id");
+      expect(result).toEqual({ success: true });
     });
 
     it("inviteUser throws 'Permissão insuficiente.'", async () => {

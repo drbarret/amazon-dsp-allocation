@@ -7,6 +7,11 @@ import { roleIsAtLeast } from "@/lib/authz";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { allocateVacancies } from "@/lib/distribution-engine";
+import {
+  applyPunishmentsToDrivers,
+  resolvePunishmentOutcomes,
+} from "@/lib/behavior-distribution";
+import { addWeeks } from "@/lib/behavior";
 import type { UserRole, VehicleType } from "@/generated/prisma";
 
 const VEHICLE_TYPES: VehicleType[] = ["CARGO_VAN", "LARGE_VAN", "PASSEIO"];
@@ -404,7 +409,32 @@ export async function runDistribution(
       cnhExpiration: u.driverProfile!.cnhExpiration,
     }));
 
-  const result = allocateVacancies({ week, vacancies, drivers });
+  // Load ACTIVE behavior punishments for THIS company's drivers whose
+  // effective week overlaps this week. Scoping to the company's driver
+  // profiles prevents one company's distribution from affecting another's
+  // infractions. The punishment wins over the 3-vacancy minimum (intentional).
+  const companyDriverProfileIds = drivers.map((d) => d.driverProfileId);
+  const activeInfractions = await prisma.driverInfraction.findMany({
+    where: {
+      status: "ACTIVE",
+      driverProfileId: { in: companyDriverProfileIds },
+      effectiveStartDate: { lte: week.endDate },
+      effectiveEndDate: { gte: week.startDate },
+    },
+  });
+  const punishmentEffects = applyPunishmentsToDrivers(activeInfractions);
+
+  const driversWithPunishments = drivers.map((d) => {
+    const effect = punishmentEffects.get(d.driverProfileId);
+    if (!effect) return d;
+    return {
+      ...d,
+      quotaReduction: effect.quotaReduction,
+      excluded: effect.excluded,
+    };
+  });
+
+  const result = allocateVacancies({ week, vacancies, drivers: driversWithPunishments });
 
   // Persist assignments inside a transaction, replacing previous ones.
   await prisma.$transaction(async (tx) => {
@@ -427,6 +457,45 @@ export async function runDistribution(
       });
     }
   });
+
+  // Resolve punishment outcomes for the distributed week and persist them.
+  // A fulfilled punishment is zeroed automatically (the driver competes on
+  // equal footing again); an unfulfilled one rolls to the next week.
+  if (activeInfractions.length > 0) {
+    const assignedCountByDriver = new Map<string, number>();
+    for (const a of result.assignments) {
+      assignedCountByDriver.set(
+        a.driverProfileId,
+        (assignedCountByDriver.get(a.driverProfileId) ?? 0) + 1
+      );
+    }
+    const outcomes = resolvePunishmentOutcomes(activeInfractions, assignedCountByDriver);
+    for (const outcome of outcomes) {
+      if (outcome.fulfilled) {
+        await prisma.driverInfraction.update({
+          where: { id: outcome.infractionId },
+          data: { status: "FULFILLED", fulfilledAt: new Date() },
+        });
+        await writeAuditLog({
+          eventType: "INFRACTION_FULFILLED",
+          actorId,
+          metadata: { infractionId: outcome.infractionId },
+        });
+      } else {
+        await prisma.driverInfraction.update({
+          where: { id: outcome.infractionId },
+          data: {
+            effectiveStartDate: outcome.nextStart!,
+            effectiveEndDate: outcome.nextEnd!,
+            effectiveWeekKey: addWeeks(week.startDate, 1).toISOString().split("T")[0],
+            ...(outcome.nextWeeksServed !== undefined
+              ? { weeksServed: outcome.nextWeeksServed }
+              : {}),
+          },
+        });
+      }
+    }
+  }
 
   // Audit: who ran it and how many vacancies were assigned.
   await writeAuditLog({

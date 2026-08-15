@@ -1,9 +1,11 @@
 import { auth, signOut } from "@/lib/auth";
 import { needsOnboarding } from "@/lib/onboarding";
 import { redirect } from "next/navigation";
+import { roleIsAtLeast } from "@/lib/authz";
 import { Button } from "@/components/ui/button";
 import { LogOutIcon, UserIcon } from "lucide-react";
 import Link from "next/link";
+import type { UserRole } from "@/generated/prisma";
 
 export default async function ProtectedLayout({
   children,
@@ -31,6 +33,15 @@ export default async function ProtectedLayout({
     SUPERVISOR: "Supervisor",
     DRIVER: "Motorista",
   };
+
+  const role = (session.user.role ?? "DRIVER") as UserRole;
+  const navItems: { href: string; label: string; show: boolean }[] = [
+    { href: "/dashboard", label: "Início", show: true },
+    { href: "/dispatch", label: "Dispatch", show: roleIsAtLeast(role, "SUPERVISOR") },
+    { href: "/behavior", label: "Comportamento", show: roleIsAtLeast(role, "SUPERVISOR") },
+    { href: "/drivers", label: "Motoristas", show: roleIsAtLeast(role, "SUPERVISOR") },
+    { href: "/admin/users", label: "Usuários", show: roleIsAtLeast(role, "ACCOUNT_MANAGER") },
+  ];
 
   return (
     <div className="flex min-h-screen flex-col bg-zinc-50">
@@ -69,6 +80,21 @@ export default async function ProtectedLayout({
             </form>
           </div>
         </div>
+
+        {/* Navigation */}
+        <nav className="flex gap-1 overflow-x-auto border-t px-4 py-1.5">
+          {navItems
+            .filter((n) => n.show)
+            .map((n) => (
+              <Link
+                key={n.href}
+                href={n.href}
+                className="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+              >
+                {n.label}
+              </Link>
+            ))}
+        </nav>
       </header>
 
       {/* Main content */}

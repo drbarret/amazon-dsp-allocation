@@ -84,7 +84,11 @@ export async function changeUserRole(targetUserId: string, newRole: UserRole) {
 }
 
 export async function deactivateUser(targetUserId: string) {
-  const session = await requireAdminOrAccountManager();
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Error("Não autenticado.");
+  }
+  const actorRole = session.user.role as UserRole;
   const actorId = session.user.id;
 
   const target = await prisma.user.findUnique({
@@ -93,6 +97,16 @@ export async function deactivateUser(targetUserId: string) {
   });
   if (!target) {
     return { success: false, error: "Usuário não encontrado." };
+  }
+
+  // Rule 9: who deactivates determines who can reactivate. A supervisor may
+  // deactivate a DRIVER (e.g. for behavior recidivism); account managers and
+  // admins may deactivate anyone. The deactivator is recorded so reactivation
+  // can be restricted accordingly.
+  if (!roleIsAtLeast(actorRole, "ACCOUNT_MANAGER")) {
+    if (actorRole !== "SUPERVISOR" || target.role !== "DRIVER") {
+      return { success: false, error: "Permissão insuficiente." };
+    }
   }
 
   if (!target.active) {
@@ -121,10 +135,10 @@ export async function deactivateUser(targetUserId: string) {
     };
   }
 
-  // Layer 2: deactivate User
+  // Layer 2: deactivate User, recording who deactivated (for the reactivation rule)
   await prisma.user.update({
     where: { id: targetUserId },
-    data: { active: false },
+    data: { active: false, deactivatedById: actorId, deactivatedByRole: actorRole },
   });
 
   // Layer 1: block AllowedEmail (set ACTIVE → BLOCKED)
@@ -139,7 +153,7 @@ export async function deactivateUser(targetUserId: string) {
     actorId,
     targetUserId,
     oldValue: { active: true },
-    newValue: { active: false },
+    newValue: { active: false, deactivatedByRole: actorRole },
   });
 
   revalidatePath("/admin/users");
@@ -147,12 +161,16 @@ export async function deactivateUser(targetUserId: string) {
 }
 
 export async function reactivateUser(targetUserId: string) {
-  const session = await requireAdminOrAccountManager();
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Error("Não autenticado.");
+  }
+  const actorRole = session.user.role as UserRole;
   const actorId = session.user.id;
 
   const target = await prisma.user.findUnique({
     where: { id: targetUserId },
-    select: { id: true, active: true, email: true },
+    select: { id: true, active: true, email: true, deactivatedByRole: true },
   });
   if (!target) {
     return { success: false, error: "Usuário não encontrado." };
@@ -162,10 +180,30 @@ export async function reactivateUser(targetUserId: string) {
     return { success: false, error: "Usuário já está ativo." };
   }
 
-  // Layer 2: reactivate User
+  // Rule 9: who deactivates determines who can reactivate.
+  //   - If an account manager (or admin) deactivated, only an account manager
+  //     (or admin) may reactivate — a supervisor cannot.
+  //   - If a supervisor deactivated, a supervisor or account manager may reactivate.
+  const deactivatedBy = target.deactivatedByRole;
+  if (deactivatedBy === "ACCOUNT_MANAGER" || deactivatedBy === "ADMIN") {
+    if (!roleIsAtLeast(actorRole, "ACCOUNT_MANAGER")) {
+      return {
+        success: false,
+        error:
+          "Este usuário foi desativado por um gerente de contas. Somente um gerente de contas ou administrador pode reativá-lo.",
+      };
+    }
+  } else {
+    // Supervisor deactivated (or unknown) — supervisor+ may reactivate.
+    if (!roleIsAtLeast(actorRole, "SUPERVISOR")) {
+      return { success: false, error: "Permissão insuficiente." };
+    }
+  }
+
+  // Layer 2: reactivate User, clearing the deactivation record
   await prisma.user.update({
     where: { id: targetUserId },
-    data: { active: true },
+    data: { active: true, deactivatedById: null, deactivatedByRole: null },
   });
 
   // Layer 1: reactivate AllowedEmail (set BLOCKED → ACTIVE)

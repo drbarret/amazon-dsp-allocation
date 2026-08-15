@@ -48,6 +48,18 @@ export interface DriverForAllocation {
    */
   behaviorPenalty?: number;
   /**
+   * Behavior punishment: number of vacancies to reduce from this driver's
+   * weekly quota ("perde N vagas"). 0 or undefined = no reduction. The
+   * punishment wins over the 3-vacancy minimum guarantee, so a punished
+   * driver may end up below the minimum (intentional).
+   */
+  quotaReduction?: number;
+  /**
+   * Behavior punishment: when true the driver is excluded from the
+   * distribution entirely for this week ("N semanas sem vagas").
+   */
+  excluded?: boolean;
+  /**
    * Future punctuality/attendance score (step-4). Higher is better. When
    * absent, the engine falls back to controlled randomness.
    */
@@ -175,14 +187,35 @@ export function allocateVacancies(input: AllocationInput): AllocationResult {
   const rand = mulberry32(seed);
 
   for (const [vehicleType, typeSlots] of slotsByType) {
-    const compatible = activeDrivers.filter((d) => d.vehicleType === vehicleType);
+    const compatible = activeDrivers.filter(
+      (d) => d.vehicleType === vehicleType && !d.excluded
+    );
+
+    // Fair-share base quota for this vehicle type group. Only punished drivers
+    // are capped at (baseQuota - quotaReduction); the punishment wins over the
+    // 3-vacancy minimum, so a punished driver may end up below the minimum.
+    // Non-punished drivers keep no cap so all compatible slots can still be
+    // filled (preserving the existing fill-all behavior).
+    const baseQuota =
+      compatible.length > 0 ? Math.floor(typeSlots.length / compatible.length) : 0;
+    const maxQuota = new Map<string, number>();
+    for (const d of compatible) {
+      const reduction = d.quotaReduction ?? 0;
+      maxQuota.set(
+        d.driverProfileId,
+        reduction > 0 ? Math.max(0, baseQuota - reduction) : Number.POSITIVE_INFINITY
+      );
+    }
 
     for (const slot of typeSlots) {
       const { vacancy } = slot;
 
-      // Candidates: compatible drivers not already assigned to this vacancy.
+      // Candidates: compatible drivers not already assigned to this vacancy
+      // and not yet at their (possibly reduced) quota.
       const candidates = compatible.filter(
-        (d) => !assignedVacancyIds.get(d.driverProfileId)!.has(vacancy.id)
+        (d) =>
+          !assignedVacancyIds.get(d.driverProfileId)!.has(vacancy.id) &&
+          assignedCount.get(d.driverProfileId)! < maxQuota.get(d.driverProfileId)!
       );
 
       if (candidates.length === 0) {
