@@ -159,6 +159,7 @@ enum AuditEventType {
   CNH_UPDATED
   CITY_PREFERENCES_UPDATED
   VEHICLE_TYPE_UPDATED
+  CNH_COLLECTED
 }
 
 // ---------- Core Entities ----------
@@ -275,20 +276,20 @@ model DriverProfile {
   @@map("driver_profiles")
 }
 
-// A CNH-expiry reminder email sent to a driver. Idempotency is enforced by
-// the unique (driverProfileId, cnhExpiration) constraint: a driver receives
-// at most one reminder per distinct CNH expiry date. If the supervisor later
-// updates the CNH to a new date, a fresh reminder may be sent for that date.
+// A CNH-collection email sent to a driver by a supervisor. This is a HISTORY
+// table: re-send is allowed, so there is no unique constraint — every send
+// appends a row with a timestamp and the actor who triggered it. The
+// supervisor sees the most recent collection per driver before charging again.
 model CnhReminder {
   id              String   @id @default(uuid())
   driverProfileId String
-  cnhExpiration   DateTime // the expiry date this reminder refers to
-  type            String   @default("CNH_EXPIRY_30D") // CNH_EXPIRY_30D
+  cnhExpiration   DateTime // the expiry date this collection refers to
+  type            String   @default("CNH_COLLECTED") // CNH_COLLECTED
   sentAt          DateTime @default(now())
+  actorId         String? // who triggered the collection (supervisor+)
 
   driverProfile DriverProfile @relation(fields: [driverProfileId], references: [id], onDelete: Cascade)
 
-  @@unique([driverProfileId, cnhExpiration])
   @@index([driverProfileId])
   @@map("cnh_reminders")
 }

@@ -2,7 +2,8 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vites
 import { prisma } from "@/lib/prisma";
 import { SKIP_INTEGRATION, requireDatabase } from "@/lib/test-db-gate";
 import { updateDriverCnh, updateDriverCityPreferences, updateDriverVehicleType } from "../actions";
-import { sendCnhReminders } from "@/lib/cnh-reminder";
+import { findExpiredCnhDrivers } from "@/lib/cnh-collection";
+import { collectCnh } from "@/app/(protected)/cnh/actions";
 
 // ---------------------------------------------------------------------------
 // Integration test against a real Postgres database, using disposable data.
@@ -12,9 +13,13 @@ import { sendCnhReminders } from "@/lib/cnh-reminder";
 //   - A driver cannot edit their own CNH/cities (refused on the server).
 //   - Invalid CNH dates are refused on the server.
 //   - City validation (1-3, no dup, only the 8 allowed) is enforced.
-//   - The CNH reminder: a driver expiring in 30 days enters the list, one
-//     expiring in 60 days does not, and an already-reminded driver is not
-//     reminded again (idempotency).
+//   - CNH collection (manual, supervisor-driven): findExpiredCnhDrivers lists
+//     only ACTIVE drivers with an EXPIRED CNH; collectCnh revalidates each
+//     selection on the server (a driver with a VALID CNH or an INACTIVE driver
+//     is refused and never emailed); re-send is allowed and records a history
+//     row per send.
+//   - No real email is sent: the email transport is mocked; the disposable
+//     driver addresses are fake.
 //   - Counts are restored afterwards (125 users, 124 driver_profiles,
 //     92 ACTIVE + 41 BLOCKED allowed_emails, 124 CNH filled).
 //
@@ -34,6 +39,13 @@ vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
 }));
 
+// Mock the email transport so NO real email is ever sent during integration
+// tests. The rest of the production path (sendCnhCollection, collectCnh, the
+// DB history rows) runs for real.
+vi.mock("@/lib/email", () => ({
+  sendEmail: vi.fn().mockResolvedValue({ sent: true, degraded: false }),
+}));
+
 describe.skipIf(SKIP_INTEGRATION)("supervisor CNH + city edit and reminder integration", () => {
   const runId = Date.now();
   const email = `cnh-supervisor-${runId}@example.com`;
@@ -51,12 +63,12 @@ describe.skipIf(SKIP_INTEGRATION)("supervisor CNH + city edit and reminder integ
   // concurrently (each creates and removes its own disposable data).
   let baseline = { users: 0, profiles: 0, active: 0, blocked: 0, cnhFilled: 0 };
 
-  // Fixed reference "now" for the reminder window.
+  // Fixed reference "now" for the collection.
   const NOW = new Date("2026-08-15T12:00:00.000Z");
-  // Driver A: expires 2026-09-10 (26 days after NOW → within 30).
-  const CNH_A = new Date("2026-09-10T00:00:00.000Z");
-  // Driver B: expires 2026-10-14 (60 days after NOW → outside 30).
-  const CNH_B = new Date("2026-10-14T00:00:00.000Z");
+  // Driver A: expires 2026-07-01 (BEFORE NOW → CNH already expired).
+  const CNH_A = new Date("2026-07-01T00:00:00.000Z");
+  // Driver B: expires 2027-01-01 (AFTER NOW → CNH still valid).
+  const CNH_B = new Date("2027-01-01T00:00:00.000Z");
 
   function session() {
     return {
@@ -340,22 +352,70 @@ describe.skipIf(SKIP_INTEGRATION)("supervisor CNH + city edit and reminder integ
     expect(audit!.newValue).toEqual({ vehicleType: "PASSEIO" });
   });
 
-  it("reminder: 30-day driver enters, 60-day driver does not, idempotent", async () => {
-    const sendFn = vi.fn().mockResolvedValue({ sent: true, degraded: false });
+  it("findExpiredCnhDrivers lists only ACTIVE drivers with an EXPIRED CNH", async () => {
+    // Driver A has an expired CNH; driver B has a valid CNH.
+    const expired = await findExpiredCnhDrivers(NOW);
+    const ids = expired.map((d) => d.driverProfileId);
+    expect(ids).toContain(driverAProfileId);
+    expect(ids).not.toContain(driverBProfileId);
+  });
 
-    // First run: driver A (30 days) is sent; driver B (60 days) is not.
-    const first = await sendCnhReminders({ now: NOW, sendFn });
-    expect(first.sent.map((d) => d.driverProfileId)).toEqual([driverAProfileId]);
-    expect(first.due.map((d) => d.driverProfileId)).toEqual([driverAProfileId]);
-    expect(sendFn).toHaveBeenCalledTimes(1);
-    expect(sendFn.mock.calls[0][0].to).toContain("cnh-driver-a");
+  it("collectCnh sends to an expired active driver and records a history row", async () => {
+    const result = await collectCnh([driverAUserId]);
+    expect(result.success).toBe(true);
+    expect(result.sent).toBe(1);
+    expect(result.rejected).toHaveLength(0);
 
-    // Second run: driver A is already reminded → not sent again (idempotency).
-    const second = await sendCnhReminders({ now: NOW, sendFn });
-    expect(second.sent).toHaveLength(0);
-    expect(second.alreadyReminded.map((d) => d.driverProfileId)).toEqual([
-      driverAProfileId,
-    ]);
-    expect(sendFn).toHaveBeenCalledTimes(1); // still only the first send
+    const history = await prisma.cnhReminder.findMany({
+      where: { driverProfileId: driverAProfileId },
+    });
+    expect(history).toHaveLength(1);
+    expect(history[0].actorId).toBe(supervisorId);
+    expect(history[0].type).toBe("CNH_COLLECTED");
+  });
+
+  it("collectCnh refuses a driver with a VALID CNH (never emailed)", async () => {
+    const result = await collectCnh([driverBUserId]);
+    expect(result.success).toBe(true);
+    expect(result.sent).toBe(0);
+    expect(result.rejected).toHaveLength(1);
+    expect(result.rejected[0].reason).toContain("não está vencida");
+
+    const history = await prisma.cnhReminder.findMany({
+      where: { driverProfileId: driverBProfileId },
+    });
+    expect(history).toHaveLength(0);
+  });
+
+  it("collectCnh refuses an INACTIVE driver (never emailed)", async () => {
+    // Deactivate driver A, then try to collect from them.
+    await prisma.user.update({
+      where: { id: driverAUserId },
+      data: { active: false },
+    });
+    try {
+      const result = await collectCnh([driverAUserId]);
+      expect(result.success).toBe(true);
+      expect(result.sent).toBe(0);
+      expect(result.rejected).toHaveLength(1);
+      expect(result.rejected[0].reason).toContain("inativo");
+    } finally {
+      await prisma.user.update({
+        where: { id: driverAUserId },
+        data: { active: true },
+      });
+    }
+  });
+
+  it("RE-SEND is allowed: collecting twice records two history rows", async () => {
+    const first = await collectCnh([driverAUserId]);
+    const second = await collectCnh([driverAUserId]);
+    expect(first.sent).toBe(1);
+    expect(second.sent).toBe(1);
+
+    const history = await prisma.cnhReminder.findMany({
+      where: { driverProfileId: driverAProfileId },
+    });
+    expect(history).toHaveLength(2);
   });
 });

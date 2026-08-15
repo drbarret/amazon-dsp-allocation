@@ -124,12 +124,13 @@ npm run test:db
 npm run test:redis
 ```
 
-## Aviso de CNH vencendo (e-mail)
+## Cobrança de CNH atualizada (e-mail)
 
-O sistema envia um aviso por e-mail ao motorista **30 dias antes** do vencimento
-da CNH, usando [Resend](https://resend.com). O envio é **idempotente**: cada
-motorista recebe no máximo um aviso por data de vencimento (garantido por uma
-constraint única no banco).
+A cobrança de CNH é uma **ação manual do supervisor**. Não existe disparo
+automático, agendamento ou janela de vencimento: o supervisor identifica os
+motoristas com CNH vencida, marca quem vai receber e clica em **"Cobrar CNH
+atualizada"**. O e-mail é enviado apenas para os selecionados, usando
+[Resend](https://resend.com).
 
 ### Variáveis de ambiente
 
@@ -138,25 +139,29 @@ constraint única no banco).
 | `RESEND_API_KEY` | Não* | Chave da API do Resend. Sem ela o sistema **degrada com log claro** e não envia e-mails (nenhuma quebra). |
 | `EMAIL_FROM` | Não | Remetente autorizado no domínio do Resend. Padrão: `TRC Brasil <trc-brasil@instalog.com.br>`. |
 | `EMAIL_TO_OVERRIDE` | Não | Redireciona todos os e-mails para um endereço de teste. |
-| `CRON_SECRET` | Sim (para disparo) | Token que protege o endpoint de disparo. |
 
-\* Sem `RESEND_API_KEY` o aviso não é enviado, mas o sistema continua funcionando.
+\* Sem `RESEND_API_KEY` o e-mail não é enviado, mas o sistema continua funcionando.
 
 > **Domínio do remetente:** o domínio `instalog.com.br` precisa estar **verificado
 > na conta do Resend** para que os e-mails sejam entregues. O remetente padrão é
 > `trc-brasil@instalog.com.br` (TRC = Transportation Risk and Compliance).
 
-### Como o disparo acontece
+### Como a cobrança acontece
 
-O disparo é feito por um **endpoint protegido** `POST /api/cron/cnh-reminders`,
-que exige `Authorization: Bearer <CRON_SECRET>`. Um endpoint aberto que
-disparasse e-mails em massa seria grave, por isso o token é obrigatório.
-
-- **Na Vercel:** agende via `vercel.json` (`crons`) apontando para o endpoint.
-- **Manual:** `node scripts/send-cnh-reminders.mjs` (ou `--dry-run` para simular).
+- O supervisor acessa a tela de cobrança de CNH (área de administração).
+- A lista mostra os motoristas **ativos** com **CNH vencida**, a data de
+  vencimento e **quando foi a última cobrança** de cada um.
+- O supervisor marca os motoristas que devem receber e clica em
+  **"Cobrar CNH atualizada"**.
+- O servidor **revalida** cada selecionado (papel, ativo e CNH vencida) antes
+  de enviar — a seleção vinda do cliente nunca é confiada.
+- **Reenvio é permitido**: cada cobrança é registrada como histórico com
+  data/hora e autor. O supervisor pode cobrar de novo quem ignorou.
+- Após o envio, a tela mostra um resumo: quantos enviados, quantos falharam e
+  por quê.
 
 Nunca envie e-mails reais para motoristas em desenvolvimento — use
-`EMAIL_TO_OVERRIDE` ou `--dry-run`.
+`EMAIL_TO_OVERRIDE` ou mocks nos testes.
 
 ## Licença
 

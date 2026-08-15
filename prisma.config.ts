@@ -34,5 +34,6 @@ export default defineConfig({
   },
   datasource: {
     url: getDatabaseUrl(),
+    shadowDatabaseUrl: process.env["SHADOW_DATABASE_URL"] || undefined,
   },
 });

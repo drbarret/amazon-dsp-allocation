@@ -100,15 +100,17 @@ trabalho e deve proteger os motoristas em bom standing, que são a maioria.
 
 - Motorista com CNH vencida **não é bloqueado** no sistema.
 - O supervisor pode atualizar a data da CNH **a qualquer momento** — é
-  necessária uma ação administrativa para editar a CNH (funcionalidade ainda
-  não implementada).
+  necessária uma ação administrativa para editar a CNH.
 - A distribuição de vagas acontece **normalmente** para motoristas com CNH
   vencida.
 - Durante a distribuição, exibe-se um **asterisco (`\*`)** ao lado do motorista
   para indicar que a CNH está vencida e precisa ser atualizada.
-- Notificação por e-mail 30 dias antes do vencimento continua desejada. O
-  serviço de e-mail ainda não foi definido; quando implementado, usar
-  [Resend](https://resend.com) conforme preferência técnica do projeto.
+- **A cobrança de CNH é MANUAL, feita pelo supervisor** (decisão 2026-08-15).
+  Não existe disparo automático, agendamento ou janela de vencimento. O
+  supervisor identifica os motoristas com CNH vencida, marca quem vai receber
+  e clica em **"Cobrar CNH atualizada"**. O envio usa
+  [Resend](https://resend.com). O disparo automático (endpoint de cron e
+  script) foi **removido**.
 
 ## 6. E-mails da planilha = contas Amazon
 
@@ -189,6 +191,26 @@ A importação gravou `vehicleType = CARGO_VAN` fixo para todos, então os 83
 motoristas ativos estão **todos na mesma categoria**. A regra de categoria
 estrita do algoritmo está correta, mas fica **inócua** até os tipos reais serem
 cadastrados. A tela de edição pelo supervisor virá em tarefa separada.
+
+### G. Cobrança de CNH é manual (supervisor)
+
+O e-mail de CNH **não é mais automático** (decisão 2026-08-15). Nada de janela
+de 30 dias, agendamento ou rotina que dispara sozinha. O envio é um ato
+deliberado do supervisor, com seleção explícita de quem recebe:
+
+- O supervisor acessa a tela de cobrança de CNH, vê os motoristas **ativos**
+  com **CNH vencida** (com a data de vencimento e a **última cobrança** de
+  cada um), marca quem vai receber e clica em **"Cobrar CNH atualizada"**.
+- O servidor **revalida** cada selecionado (papel DRIVER, ativo e CNH vencida)
+  antes de enviar — a seleção vinda do cliente nunca é confiada.
+- **Reenvio é permitido**: cada cobrança é registrada como histórico com
+  data/hora e autor. A restrição de unicidade em `cnh_reminders` foi removida
+  (migração `20260815190000_cnh_collection_history`).
+- O disparo automático foi **removido**: endpoint `POST /api/cron/cnh-reminders`
+  e script `scripts/send-cnh-reminders.mjs` foram apagados, e `CRON_SECRET`
+  deixou de ser necessária.
+- Auditoria: cada cobrança registra `CNH_COLLECTED` com autor e contagem de
+  destinatários (sem PII em log).
 
 ---
 

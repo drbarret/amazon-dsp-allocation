@@ -40,6 +40,7 @@ export default async function ProtectedLayout({
     { href: "/dispatch", label: "Dispatch", show: roleIsAtLeast(role, "SUPERVISOR") },
     { href: "/behavior", label: "Comportamento", show: roleIsAtLeast(role, "SUPERVISOR") },
     { href: "/drivers", label: "Motoristas", show: roleIsAtLeast(role, "SUPERVISOR") },
+    { href: "/cnh", label: "Cobrar CNH", show: roleIsAtLeast(role, "SUPERVISOR") },
     { href: "/admin/users", label: "Usuários", show: roleIsAtLeast(role, "ACCOUNT_MANAGER") },
   ];
 
