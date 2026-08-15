@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -30,6 +31,7 @@ import {
   ClockIcon,
   CheckCircle2Icon,
   XCircleIcon,
+  PencilIcon,
 } from "lucide-react";
 import {
   changeUserRole,
@@ -37,9 +39,24 @@ import {
   reactivateUser,
   inviteUser,
   revokeInvite,
+  updateDriverCnh,
+  updateDriverCityPreferences,
 } from "./actions";
 import type { UserRow } from "./page";
 import type { UserRole } from "@/generated/prisma";
+
+const ALLOWED_CITIES = [
+  "Jundiaí",
+  "Louveira",
+  "Várzea Paulista",
+  "Campo Limpo",
+  "Itupeva",
+  "Itatiba",
+  "Cabreúva",
+  "Vinhedo",
+] as const;
+
+const MAX_CITIES = 3;
 
 const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
   { value: "ADMIN", label: "Admin" },
@@ -72,6 +89,8 @@ export function UserManagementClient({ users, currentUserId, roleLabels }: Props
     userId: string;
     userName: string;
   } | null>(null);
+  const [cnhEdit, setCnhEdit] = useState<{ userId: string; userName: string; value: string } | null>(null);
+  const [cityEdit, setCityEdit] = useState<{ userId: string; userName: string; selected: string[] } | null>(null);
 
   const filtered = users.filter((u) => {
     const q = search.toLowerCase();
@@ -167,6 +186,54 @@ export function UserManagementClient({ users, currentUserId, roleLabels }: Props
     });
   }
 
+  function handleCnhSave() {
+    if (!cnhEdit) return;
+    startTransition(async () => {
+      try {
+        const result = await updateDriverCnh(cnhEdit.userId, cnhEdit.value);
+        if (result.success) {
+          toast.success("Data da CNH atualizada.");
+          setCnhEdit(null);
+        } else {
+          toast.error(result.error ?? "Erro ao atualizar CNH.");
+        }
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao atualizar CNH.");
+      }
+    });
+  }
+
+  function handleCitySave() {
+    if (!cityEdit) return;
+    startTransition(async () => {
+      try {
+        const result = await updateDriverCityPreferences(
+          cityEdit.userId,
+          cityEdit.selected,
+        );
+        if (result.success) {
+          toast.success("Cidades de preferência atualizadas.");
+          setCityEdit(null);
+        } else {
+          toast.error(result.error ?? "Erro ao atualizar cidades.");
+        }
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao atualizar cidades.");
+      }
+    });
+  }
+
+  function toggleCityEdit(city: string) {
+    setCityEdit((prev) => {
+      if (!prev) return prev;
+      if (prev.selected.includes(city)) {
+        return { ...prev, selected: prev.selected.filter((c) => c !== city) };
+      }
+      if (prev.selected.length >= MAX_CITIES) return prev;
+      return { ...prev, selected: [...prev.selected, city] };
+    });
+  }
+
   return (
     <div className="space-y-6 p-4 sm:p-6">
       {/* Header */}
@@ -206,6 +273,8 @@ export function UserManagementClient({ users, currentUserId, roleLabels }: Props
               <th className="px-4 py-3">Papel</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Perfil</th>
+              <th className="px-4 py-3">CNH</th>
+              <th className="px-4 py-3">Cidades</th>
               <th className="px-4 py-3">Último Acesso</th>
               <th className="px-4 py-3 text-right">Ações</th>
             </tr>
@@ -299,6 +368,74 @@ export function UserManagementClient({ users, currentUserId, roleLabels }: Props
                   )}
                 </td>
 
+                {/* CNH */}
+                <td className="px-4 py-3">
+                  {user.source === "user" && user.role === "DRIVER" ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-zinc-600">
+                        {user.cnhExpiration
+                          ? new Date(user.cnhExpiration).toLocaleDateString("pt-BR", {
+                              day: "2-digit",
+                              month: "2-digit",
+                              year: "numeric",
+                            })
+                          : "—"}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-1.5"
+                        onClick={() =>
+                          setCnhEdit({
+                            userId: user.id,
+                            userName: user.name,
+                            value: user.cnhExpiration
+                              ? new Date(user.cnhExpiration).toISOString().slice(0, 10)
+                              : "",
+                          })
+                        }
+                        disabled={isPending}
+                        title="Editar data da CNH"
+                      >
+                        <PencilIcon className="size-3.5 text-zinc-500" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-zinc-400">—</span>
+                  )}
+                </td>
+
+                {/* Cidades */}
+                <td className="px-4 py-3">
+                  {user.source === "user" && user.role === "DRIVER" ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-zinc-600">
+                        {user.cityPreferences && user.cityPreferences.length > 0
+                          ? user.cityPreferences.join(", ")
+                          : "—"}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-1.5"
+                        onClick={() =>
+                          setCityEdit({
+                            userId: user.id,
+                            userName: user.name,
+                            selected: user.cityPreferences ?? [],
+                          })
+                        }
+                        disabled={isPending}
+                        title="Editar cidades de preferência"
+                      >
+                        <PencilIcon className="size-3.5 text-zinc-500" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-zinc-400">—</span>
+                  )}
+                </td>
+
                 {/* Last login */}
                 <td className="px-4 py-3">
                   {user.lastLoginAt ? (
@@ -377,7 +514,7 @@ export function UserManagementClient({ users, currentUserId, roleLabels }: Props
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-sm text-zinc-400">
+                <td colSpan={9} className="px-4 py-8 text-center text-sm text-zinc-400">
                   Nenhum usuário encontrado.
                 </td>
               </tr>
@@ -482,6 +619,83 @@ export function UserManagementClient({ users, currentUserId, roleLabels }: Props
               : confirmAction?.type === "reactivate"
                 ? "Reativar"
                 : "Revogar"}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* CNH Edit Dialog */}
+      <Dialog open={cnhEdit !== null} onOpenChange={(open) => { if (!open) setCnhEdit(null); }}>
+        <DialogHeader>
+          <DialogTitle>Editar data da CNH</DialogTitle>
+          <DialogDescription>
+            Atualize a data de vencimento da CNH de {cnhEdit?.userName}.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="cnh-date">Data de vencimento</Label>
+            <Input
+              id="cnh-date"
+              type="date"
+              value={cnhEdit?.value ?? ""}
+              onChange={(e) =>
+                setCnhEdit((prev) => (prev ? { ...prev, value: e.target.value } : prev))
+              }
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setCnhEdit(null)}>
+            Cancelar
+          </Button>
+          <Button onClick={handleCnhSave} disabled={isPending || !cnhEdit?.value}>
+            {isPending ? "Salvando..." : "Salvar"}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* City Preferences Edit Dialog */}
+      <Dialog open={cityEdit !== null} onOpenChange={(open) => { if (!open) setCityEdit(null); }}>
+        <DialogHeader>
+          <DialogTitle>Editar cidades de preferência</DialogTitle>
+          <DialogDescription>
+            Escolha de 1 a 3 cidades para {cityEdit?.userName}. São preferências,
+            não garantia — o motorista pode ser alocado em outra cidade.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2 py-4">
+          {ALLOWED_CITIES.map((city) => {
+            const isChecked = cityEdit?.selected.includes(city) ?? false;
+            const isDisabled = !isChecked && (cityEdit?.selected.length ?? 0) >= MAX_CITIES;
+            return (
+              <label
+                key={city}
+                className={`flex cursor-pointer items-center gap-2 text-sm ${
+                  isDisabled ? "cursor-not-allowed opacity-50" : ""
+                }`}
+              >
+                <Checkbox
+                  checked={isChecked}
+                  disabled={isDisabled}
+                  onCheckedChange={() => toggleCityEdit(city)}
+                />
+                {city}
+              </label>
+            );
+          })}
+          <p className="text-xs text-muted-foreground">
+            {cityEdit?.selected.length ?? 0} de {MAX_CITIES} cidades selecionadas.
+          </p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setCityEdit(null)}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleCitySave}
+            disabled={isPending || (cityEdit?.selected.length ?? 0) < 1}
+          >
+            {isPending ? "Salvando..." : "Salvar"}
           </Button>
         </DialogFooter>
       </Dialog>

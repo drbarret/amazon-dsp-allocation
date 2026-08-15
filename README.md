@@ -124,6 +124,36 @@ npm run test:db
 npm run test:redis
 ```
 
+## Aviso de CNH vencendo (e-mail)
+
+O sistema envia um aviso por e-mail ao motorista **30 dias antes** do vencimento
+da CNH, usando [Resend](https://resend.com). O envio é **idempotente**: cada
+motorista recebe no máximo um aviso por data de vencimento (garantido por uma
+constraint única no banco).
+
+### Variáveis de ambiente
+
+| Variável | Obrigatória | Descrição |
+|----------|-------------|-----------|
+| `RESEND_API_KEY` | Não* | Chave da API do Resend. Sem ela o sistema **degrada com log claro** e não envia e-mails (nenhuma quebra). |
+| `EMAIL_FROM` | Não | Remetente autorizado no domínio do Resend. |
+| `EMAIL_TO_OVERRIDE` | Não | Redireciona todos os e-mails para um endereço de teste. |
+| `CRON_SECRET` | Sim (para disparo) | Token que protege o endpoint de disparo. |
+
+\* Sem `RESEND_API_KEY` o aviso não é enviado, mas o sistema continua funcionando.
+
+### Como o disparo acontece
+
+O disparo é feito por um **endpoint protegido** `POST /api/cron/cnh-reminders`,
+que exige `Authorization: Bearer <CRON_SECRET>`. Um endpoint aberto que
+disparasse e-mails em massa seria grave, por isso o token é obrigatório.
+
+- **Na Vercel:** agende via `vercel.json` (`crons`) apontando para o endpoint.
+- **Manual:** `node scripts/send-cnh-reminders.mjs` (ou `--dry-run` para simular).
+
+Nunca envie e-mails reais para motoristas em desenvolvimento — use
+`EMAIL_TO_OVERRIDE` ou `--dry-run`.
+
 ## Licença
 
 Privado — Uso interno ILLT / Instalog.

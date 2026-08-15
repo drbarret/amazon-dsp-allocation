@@ -229,6 +229,12 @@ export function OnboardingForm({ userName, userEmail }: Props) {
                   ? "Selecione pelo menos 1 cidade."
                   : `${selectedCities.length} de ${MAX_CITIES} cidades selecionadas.`}
               </p>
+              <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                Estas são apenas <strong>preferências</strong>, não uma garantia.
+                Você pode ser alocado em outra cidade conforme a necessidade da
+                operação. Após o cadastro, somente um supervisor pode alterar
+                essas cidades.
+              </p>
               <input
                 type="hidden"
                 name="cityPreferences"

@@ -4,6 +4,8 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/lib/audit";
 import { roleIsAtLeast } from "@/lib/authz";
+import { validateCityPreferences } from "@/lib/onboarding";
+import { isValidCnhDate } from "@/lib/cnh-validation";
 import { revalidatePath } from "next/cache";
 import type { UserRole } from "@/generated/prisma";
 
@@ -15,6 +17,21 @@ async function requireAdminOrAccountManager() {
     throw new Error("Não autenticado.");
   }
   if (!roleIsAtLeast(session.user.role as UserRole, "ACCOUNT_MANAGER")) {
+    throw new Error("Permissão insuficiente.");
+  }
+  return session;
+}
+
+/**
+ * Require an authenticated session with SUPERVISOR role or above.
+ * Used for editing a driver's CNH expiry date and city preferences.
+ */
+async function requireSupervisorOrAbove() {
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Error("Não autenticado.");
+  }
+  if (!roleIsAtLeast(session.user.role as UserRole, "SUPERVISOR")) {
     throw new Error("Permissão insuficiente.");
   }
   return session;
@@ -297,6 +314,149 @@ export async function revokeInvite(allowedEmailId: string) {
     eventType: "USER_INVITE_REVOKED",
     actorId,
     metadata: { email: entry.email, allowedEmailId },
+  });
+
+  revalidatePath("/admin/users");
+  return { success: true };
+}
+
+/**
+ * Supervisor (or above) updates a driver's CNH expiry date.
+ *
+ * Server-side validation only — a forged request is refused here, never in
+ * the client. A driver cannot edit their own CNH.
+ */
+export async function updateDriverCnh(
+  targetUserId: string,
+  cnhExpiration: string,
+) {
+  const session = await requireSupervisorOrAbove();
+  const actorId = session.user.id;
+
+  if (targetUserId === actorId) {
+    return {
+      success: false,
+      error: "Você não pode editar a própria CNH.",
+    };
+  }
+
+  const parsed = new Date(cnhExpiration);
+  const dateCheck = isValidCnhDate(parsed);
+  if (!dateCheck.valid) {
+    return { success: false, error: dateCheck.error! };
+  }
+
+  const target = await prisma.user.findUnique({
+    where: { id: targetUserId },
+    select: {
+      id: true,
+      role: true,
+      driverProfile: { select: { id: true, cnhExpiration: true } },
+    },
+  });
+  if (!target) {
+    return { success: false, error: "Usuário não encontrado." };
+  }
+  if (target.role !== "DRIVER" || !target.driverProfile) {
+    return {
+      success: false,
+      error: "O usuário alvo não é um motorista com perfil cadastrado.",
+    };
+  }
+
+  const oldValue = target.driverProfile.cnhExpiration;
+
+  await prisma.driverProfile.update({
+    where: { id: target.driverProfile.id },
+    data: { cnhExpiration: parsed },
+  });
+
+  await writeAuditLog({
+    eventType: "CNH_UPDATED",
+    actorId,
+    targetUserId,
+    oldValue: { cnhExpiration: oldValue ? oldValue.toISOString() : null },
+    newValue: { cnhExpiration: parsed.toISOString() },
+  });
+
+  revalidatePath("/admin/users");
+  return { success: true };
+}
+
+/**
+ * Supervisor (or above) updates a driver's city preferences (1-3 of the 8
+ * allowed cities, preserving preference order). Server-side validation only.
+ * A driver cannot edit their own cities after onboarding.
+ */
+export async function updateDriverCityPreferences(
+  targetUserId: string,
+  cities: string[],
+) {
+  const session = await requireSupervisorOrAbove();
+  const actorId = session.user.id;
+
+  if (targetUserId === actorId) {
+    return {
+      success: false,
+      error: "Você não pode editar as próprias cidades de preferência.",
+    };
+  }
+
+  const cityValidation = validateCityPreferences(cities);
+  if (!cityValidation.valid) {
+    return { success: false, error: cityValidation.error! };
+  }
+
+  const target = await prisma.user.findUnique({
+    where: { id: targetUserId },
+    select: {
+      id: true,
+      role: true,
+      driverProfile: {
+        select: {
+          id: true,
+          regionPreferences: {
+            select: { city: true, priority: true },
+            orderBy: { priority: "asc" },
+          },
+        },
+      },
+    },
+  });
+  if (!target) {
+    return { success: false, error: "Usuário não encontrado." };
+  }
+  if (target.role !== "DRIVER" || !target.driverProfile) {
+    return {
+      success: false,
+      error: "O usuário alvo não é um motorista com perfil cadastrado.",
+    };
+  }
+
+  const driverProfileId = target.driverProfile.id;
+  const oldValue = target.driverProfile.regionPreferences
+    .filter((p) => p.city)
+    .map((p) => p.city as string);
+
+  await prisma.$transaction([
+    prisma.regionCityPreference.deleteMany({
+      where: { driverProfileId },
+    }),
+    prisma.regionCityPreference.createMany({
+      data: cities.map((city, index) => ({
+        driverProfileId,
+        city,
+        priority: index + 1,
+      })),
+    }),
+  ]);
+
+  await writeAuditLog({
+    eventType: "CITY_PREFERENCES_UPDATED",
+    actorId,
+    targetUserId,
+    oldValue: { cities: oldValue },
+    newValue: { cities },
   });
 
   revalidatePath("/admin/users");

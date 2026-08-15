@@ -16,6 +16,8 @@ export interface UserRow {
   source: "user" | "invite";
   allowedEmailId?: string;
   allowedEmailStatus?: string;
+  cnhExpiration?: string | null;
+  cityPreferences?: string[];
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -38,7 +40,14 @@ export default async function AdminUsersPage() {
       active: true,
       lastLoginAt: true,
       driverProfile: {
-        select: { onboardingCompleted: true },
+        select: {
+          onboardingCompleted: true,
+          cnhExpiration: true,
+          regionPreferences: {
+            select: { city: true, priority: true },
+            orderBy: { priority: "asc" },
+          },
+        },
       },
     },
     orderBy: [{ role: "asc" }, { name: "asc" }],
@@ -66,6 +75,10 @@ export default async function AdminUsersPage() {
     onboardingCompleted: u.driverProfile?.onboardingCompleted ?? null,
     lastLoginAt: u.lastLoginAt?.toISOString() ?? null,
     source: "user" as const,
+    cnhExpiration: u.driverProfile?.cnhExpiration?.toISOString() ?? null,
+    cityPreferences: (u.driverProfile?.regionPreferences ?? [])
+      .filter((p) => p.city)
+      .map((p) => p.city as string),
   }));
 
   for (const invite of invites) {

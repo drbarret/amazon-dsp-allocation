@@ -145,6 +145,22 @@ export async function completeOnboarding(
   userId: string,
   input: OnboardingInput,
 ): Promise<OnboardingResult> {
+  // 0. Guard: a driver may only complete onboarding once. After the initial
+  //    submission, only a supervisor may change the driver's data (CNH, city
+  //    preferences). This closes the hole where a driver could re-submit the
+  //    onboarding form and overwrite their own city preferences.
+  const existingProfile = await prisma.driverProfile.findUnique({
+    where: { userId },
+    select: { onboardingCompleted: true },
+  });
+  if (existingProfile?.onboardingCompleted) {
+    return {
+      success: false,
+      error:
+        "Seu cadastro já foi concluído. Para alterar seus dados, procure um supervisor.",
+    };
+  }
+
   // 1. Validate CPF
   const cpfResult = validateCpf(input.cpf);
   if (!cpfResult.valid) {

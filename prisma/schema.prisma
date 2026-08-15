@@ -156,6 +156,8 @@ enum AuditEventType {
   CONSENT_GIVEN
   CONSENT_REVOKED
   VEHICLE_RESTRICTION_UPDATED
+  CNH_UPDATED
+  CITY_PREFERENCES_UPDATED
 }
 
 // ---------- Core Entities ----------
@@ -266,9 +268,28 @@ model DriverProfile {
   infractions         DriverInfraction[]
   driverScores        DriverScore[]
   assignments         DispatchAssignment[]
+  cnhReminders        CnhReminder[]
 
   @@index([transporterId])
   @@map("driver_profiles")
+}
+
+// A CNH-expiry reminder email sent to a driver. Idempotency is enforced by
+// the unique (driverProfileId, cnhExpiration) constraint: a driver receives
+// at most one reminder per distinct CNH expiry date. If the supervisor later
+// updates the CNH to a new date, a fresh reminder may be sent for that date.
+model CnhReminder {
+  id              String   @id @default(uuid())
+  driverProfileId String
+  cnhExpiration   DateTime // the expiry date this reminder refers to
+  type            String   @default("CNH_EXPIRY_30D") // CNH_EXPIRY_30D
+  sentAt          DateTime @default(now())
+
+  driverProfile DriverProfile @relation(fields: [driverProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([driverProfileId, cnhExpiration])
+  @@index([driverProfileId])
+  @@map("cnh_reminders")
 }
 
 model VehicleRestriction {
