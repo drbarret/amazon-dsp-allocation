@@ -89,9 +89,11 @@ prepared statement "s1" already exists
 | Production URL | `https://amazon-dsp-allocation-illt.vercel.app` |
 | HTTP status | `GET /` → 200, `GET /login` → 200, `GET /dashboard` (unauthenticated) → 307 → `/login` |
 
-### ⚠️ Domain Collision Warning
+### Canonical URL
 
-`https://amazon-dsp-allocation.vercel.app` is a **404 domain collision** — it belongs to a different Vercel account. Always use the full project slug URL: `https://amazon-dsp-allocation-illt.vercel.app`.
+The **canonical production URL** is `https://amazon-dsp-allocation-illt.vercel.app` (full project slug).
+
+**Verified 2026-08-15:** the short domain `https://amazon-dsp-allocation.vercel.app` also serves this same project today — both return HTTP 200 and serve byte-identical content (identical SHA-256 hash of the `/` response). It is **not** a 404 collision with another account as previously documented. Always use the full slug `https://amazon-dsp-allocation-illt.vercel.app` as the canonical URL; the short domain currently points here too, but treat it as non-authoritative.
 
 ### Deployment Protection
 
@@ -203,4 +205,4 @@ The `UserRole` enum has three values: `DRIVER`, `SUPERVISOR`, `ACCOUNT_MANAGER`.
 
 5. **`trustHost: true` Required on Vercel:** Without it, Auth.js rejects the callback because the `Host` header doesn't match the expected origin behind Vercel's reverse proxy.
 
-6. **Domain Collision on Vercel:** The short project URL (`amazon-dsp-allocation.vercel.app`) may collide with another account. Always use the full slug (`amazon-dsp-allocation-illt.vercel.app`).
+6. **Canonical URL on Vercel:** The canonical production URL is the full slug `amazon-dsp-allocation-illt.vercel.app`. As of 2026-08-15 the short domain `amazon-dsp-allocation.vercel.app` also serves this same project (byte-identical content), but the full slug remains the authoritative URL.

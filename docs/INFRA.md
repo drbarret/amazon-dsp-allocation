@@ -28,6 +28,13 @@ Este documento lista os recursos de infraestrutura do projeto. **Nenhuma senha o
 | Deploy direto | https://amazon-dsp-allocation-7j2cr5kan-illt.vercel.app |
 | Inspect | https://vercel.com/illt/amazon-dsp-allocation/4xZfdfZfBvNYWwqcvsJUVs4hQ9wT |
 
+> **URL canônica (verificado em 2026-08-15):** a URL canônica do projeto é
+> `https://amazon-dsp-allocation-illt.vercel.app` (slug completo). O domínio curto
+> `https://amazon-dsp-allocation.vercel.app` também aponta para este mesmo projeto hoje —
+> ambos retornam HTTP 200 e servem conteúdo byte-idêntico (mesmo hash SHA-256 da resposta
+> de `/`). Não é mais uma colisão de domínio de outro projeto. Use sempre o slug completo
+> como referência canônica; o domínio curto é não-autoritativo.
+
 ## Variáveis de ambiente no Vercel
 
 Variáveis já configuradas:

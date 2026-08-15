@@ -11,8 +11,8 @@ import { runDistribution } from "../../dispatch/actions";
 //     a vacancy in the effective week.
 //   - A LOSE_VACANCY punishment stays ACTIVE (rolls forward) when the driver
 //     receives NO vacancy in the effective week (it never expires on its own).
-//   - Counts are restored afterwards (125 users, 124 driver_profiles,
-//     92 ACTIVE + 41 BLOCKED allowed_emails).
+//   - Counts are restored to the baseline captured at suite start (no residue
+//     left behind), instead of asserting fixed production counts.
 // The database is MANDATORY: if unreachable the suite FAILS HIGH. The only
 // legitimate skip is SKIP_INTEGRATION_TESTS=1 (CI has no database).
 // ---------------------------------------------------------------------------
@@ -41,6 +41,11 @@ describe.skipIf(SKIP_INTEGRATION)("behavior punishment integration", () => {
   let driverUserId = "";
   let dbReady = false;
 
+  // Baseline counts captured at suite start. Restoration is asserted against
+  // this baseline so the check is robust to other integration suites running
+  // concurrently (each creates and removes its own disposable data).
+  let baseline = { users: 0, profiles: 0, active: 0, blocked: 0 };
+
   function session() {
     return {
       user: {
@@ -55,6 +60,14 @@ describe.skipIf(SKIP_INTEGRATION)("behavior punishment integration", () => {
   beforeAll(async () => {
     await requireDatabase();
     dbReady = true;
+
+    // Capture the production baseline before creating disposable data.
+    baseline = {
+      users: await prisma.user.count(),
+      profiles: await prisma.driverProfile.count(),
+      active: await prisma.allowedEmail.count({ where: { status: "ACTIVE" } }),
+      blocked: await prisma.allowedEmail.count({ where: { status: "BLOCKED" } }),
+    };
 
     const company = await prisma.transportCompany.create({
       data: { name: `Behavior Company ${runId}` },
@@ -146,17 +159,17 @@ describe.skipIf(SKIP_INTEGRATION)("behavior punishment integration", () => {
     await prisma.user.deleteMany({ where: { id: supervisorId } });
     await prisma.transportCompany.deleteMany({ where: { id: transportCompanyId } });
 
-    // Prove the disposable data was fully removed and production counts are
-    // restored: 125 users, 124 driver_profiles, 92 ACTIVE + 41 BLOCKED.
+    // Prove the disposable data was fully removed and counts are restored to
+    // the baseline captured at suite start (no residue left behind).
     const users = await prisma.user.count();
     const profiles = await prisma.driverProfile.count();
     const active = await prisma.allowedEmail.count({ where: { status: "ACTIVE" } });
     const blocked = await prisma.allowedEmail.count({ where: { status: "BLOCKED" } });
 
-    expect(users).toBe(125);
-    expect(profiles).toBe(124);
-    expect(active).toBe(92);
-    expect(blocked).toBe(41);
+    expect(users).toBe(baseline.users);
+    expect(profiles).toBe(baseline.profiles);
+    expect(active).toBe(baseline.active);
+    expect(blocked).toBe(baseline.blocked);
   });
 
   beforeEach(async () => {
