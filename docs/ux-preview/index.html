@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — ILLT - Escala (protótipo)</title>
+<link rel="stylesheet" href="assets/preview.css">
+</head>
+<body>
+
+<div class="mobile-topbar">
+  <button class="hamburger" data-hamburger aria-label="Abrir menu" aria-expanded="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+  </button>
+  <span class="brand-title">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+    ILLT - Escala
+  </span>
+</div>
+
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <a class="brand-title" href="index.html">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+        ILLT - Escala
+      </a>
+      <div class="brand-sub">Amazon DSP Manager</div>
+    </div>
+    <nav class="sidebar-nav" aria-label="Navegação principal">
+      <a href="index.html" aria-current="page">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Início
+      </a>
+      <a href="dispatch.html">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="4"/></svg>
+        Dispatch
+      </a>
+      <a href="behavior.html">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 3 5-6"/></svg>
+        Comportamento
+      </a>
+      <a href="drivers.html">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Motoristas
+      </a>
+      <a href="cnh.html">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M15 8h4M15 12h4M7 16h10"/></svg>
+        Cobrar CNH
+      </a>
+      <a href="users.html">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11l-3 3-2-2"/></svg>
+        Usuários
+      </a>
+    </nav>
+    <div class="sidebar-user">
+      <div class="user-menu">
+        <button class="avatar-btn" data-user-btn aria-expanded="false" aria-haspopup="true">
+          <span class="avatar">MS</span>
+          <span class="avatar-meta">
+            <span class="avatar-name">Marcos Souza</span><br>
+            <span class="avatar-role">Supervisor</span>
+          </span>
+        </button>
+        <div class="user-dropdown" data-user-dropdown>
+          <a class="ud-item" href="login.html">Sair</a>
+        </div>
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <div class="version">v1.0 - Sistema de Escala</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="demo-banner">Protótipo de demonstração — todos os dados são fictícios. Nenhuma informação real.</div>
+    <div class="main-inner">
+
+      <div class="page-header">
+        <div class="ph-text">
+          <h1 class="page-title">Dashboard</h1>
+          <p class="page-desc">Semana atual: 33 | Ano: 2026</p>
+        </div>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-top">
+            <span class="kpi-label">Motoristas Ativos</span>
+            <svg class="icon-tone-blue" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <div class="kpi-value">42</div>
+          <div class="kpi-hint">cadastrados no sistema</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-top">
+            <span class="kpi-label">Vagas da Semana</span>
+            <svg class="icon-tone-green" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          </div>
+          <div class="kpi-value">128</div>
+          <div class="kpi-hint">para semana 33</div>
+        </div>
+        <div class="kpi-card tone-danger">
+          <div class="kpi-top">
+            <span class="kpi-label">CNHs Vencidas</span>
+            <svg class="icon-tone-red" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          </div>
+          <div class="kpi-value">7</div>
+          <div class="kpi-hint">aguardando cobrança</div>
+        </div>
+        <div class="kpi-card tone-warning">
+          <div class="kpi-top">
+            <span class="kpi-label">Infrações Pendentes</span>
+            <svg class="icon-tone-amber" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <div class="kpi-value">5</div>
+          <div class="kpi-hint">na fila de aprovação</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 class="section-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          Próximas semanas
+        </h2>
+        <div class="week-list">
+          <div class="week-row">
+            <div class="week-left">
+              <svg class="week-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <div>
+                <div class="week-label">Semana 33</div>
+                <div class="week-dates">16 de ago. - 22 de ago.</div>
+              </div>
+            </div>
+            <span class="pill pill-warning">Pendente</span>
+          </div>
+          <div class="week-row">
+            <div class="week-left">
+              <svg class="week-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <div>
+                <div class="week-label">Semana 34</div>
+                <div class="week-dates">23 de ago. - 29 de ago.</div>
+              </div>
+            </div>
+            <span class="pill pill-warning">Pendente</span>
+          </div>
+          <div class="week-row">
+            <div class="week-left">
+              <svg class="week-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <div>
+                <div class="week-label">Semana 35</div>
+                <div class="week-dates">30 de ago. - 05 de set.</div>
+              </div>
+            </div>
+            <span class="pill pill-warning">Pendente</span>
+          </div>
+          <div class="week-row">
+            <div class="week-left">
+              <svg class="week-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <div>
+                <div class="week-label">Semana 36</div>
+                <div class="week-dates">06 de set. - 12 de set.</div>
+              </div>
+            </div>
+            <span class="pill pill-neutral">Não iniciada</span>
+          </div>
+          <div class="week-row">
+            <div class="week-left">
+              <svg class="week-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <div>
+                <div class="week-label">Semana 37</div>
+                <div class="week-dates">13 de set. - 19 de set.</div>
+              </div>
+            </div>
+            <span class="pill pill-neutral">Não iniciada</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h2 class="section-title">Acesso rápido</h2>
+        <div class="shortcut-grid">
+          <a class="shortcut" href="dispatch.html">
+            <span class="sc-icon" style="background:#DBEAFE;color:#2563EB;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="4"/></svg>
+            </span>
+            <span>
+              <span class="sc-title">Dispatch</span>
+              <span class="sc-desc">Distribuir vagas da semana entre motoristas</span>
+            </span>
+          </a>
+          <a class="shortcut" href="drivers.html">
+            <span class="sc-icon" style="background:#DCFCE7;color:#16A34A;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </span>
+            <span>
+              <span class="sc-title">Motoristas</span>
+              <span class="sc-desc">Gerenciar cadastro, GNV e categoria de veículo</span>
+            </span>
+          </a>
+          <a class="shortcut" href="cnh.html">
+            <span class="sc-icon" style="background:#FEE2E2;color:#DC2626;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M15 8h4M15 12h4M7 16h10"/></svg>
+            </span>
+            <span>
+              <span class="sc-title">Cobrar CNH</span>
+              <span class="sc-desc">Enviar cobrança de CNH vencida por e-mail</span>
+            </span>
+          </a>
+          <a class="shortcut" href="behavior.html">
+            <span class="sc-icon" style="background:#FEF3C7;color:#D97706;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 3 5-6"/></svg>
+            </span>
+            <span>
+              <span class="sc-title">Comportamento</span>
+              <span class="sc-desc">Infrações, reincidência e fila de aprovação</span>
+            </span>
+          </a>
+          <a class="shortcut" href="users.html">
+            <span class="sc-icon" style="background:#F3E8FF;color:#9333EA;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11l-3 3-2-2"/></svg>
+            </span>
+            <span>
+              <span class="sc-title">Usuários</span>
+              <span class="sc-desc">Papéis, acesso e dados do motorista</span>
+            </span>
+          </a>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<div class="drawer-overlay" data-drawer-overlay></div>
+<div class="drawer" data-drawer aria-hidden="true">
+  <div class="drawer-head">
+    <span class="brand-title" style="font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="color:var(--brand);"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+      ILLT - Escala
+    </span>
+    <button class="drawer-close" data-drawer-close aria-label="Fechar menu">&times;</button>
+  </div>
+  <nav aria-label="Navegação móvel">
+    <a href="index.html" aria-current="page">Início</a>
+    <a href="dispatch.html">Dispatch</a>
+    <a href="behavior.html">Comportamento</a>
+    <a href="drivers.html">Motoristas</a>
+    <a href="cnh.html">Cobrar CNH</a>
+    <a href="users.html">Usuários</a>
+  </nav>
+  <div class="drawer-foot">Marcos Souza — Supervisor<br>v1.0 - Sistema de Escala</div>
+</div>
+
+<div class="brand-switcher" data-brand-switcher>
+  <button class="bs-toggle" aria-expanded="false"><span class="swatch swatch-amber"></span>Cor de marca</button>
+  <div class="bs-panel">
+    <span class="bs-label">Cor de marca</span>
+    <div class="bs-options">
+      <button data-brand="amber" class="active"><span class="swatch swatch-amber"></span>Âmbar (referência)</button>
+      <button data-brand="blue"><span class="swatch swatch-blue"></span>Azul (plano)</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/preview.js"></script>
+</body>
+</html>

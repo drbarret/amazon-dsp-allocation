@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dispatch — ILLT - Escala (protótipo)</title>
+<link rel="stylesheet" href="assets/preview.css">
+</head>
+<body>
+
+<div class="mobile-topbar">
+  <button class="hamburger" data-hamburger aria-label="Abrir menu" aria-expanded="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+  </button>
+  <span class="brand-title">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+    ILLT - Escala
+  </span>
+</div>
+
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <a class="brand-title" href="index.html">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+        ILLT - Escala
+      </a>
+      <div class="brand-sub">Amazon DSP Manager</div>
+    </div>
+    <nav class="sidebar-nav" aria-label="Navegação principal">
+      <a href="index.html">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Início
+      </a>
+      <a href="dispatch.html" aria-current="page">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="4"/></svg>
+        Dispatch
+      </a>
+      <a href="behavior.html">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 3 5-6"/></svg>
+        Comportamento
+      </a>
+      <a href="drivers.html">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Motoristas
+      </a>
+      <a href="cnh.html">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M15 8h4M15 12h4M7 16h10"/></svg>
+        Cobrar CNH
+      </a>
+      <a href="users.html">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11l-3 3-2-2"/></svg>
+        Usuários
+      </a>
+    </nav>
+    <div class="sidebar-user">
+      <div class="user-menu">
+        <button class="avatar-btn" data-user-btn aria-expanded="false" aria-haspopup="true">
+          <span class="avatar">MS</span>
+          <span class="avatar-meta">
+            <span class="avatar-name">Marcos Souza</span><br>
+            <span class="avatar-role">Supervisor</span>
+          </span>
+        </button>
+        <div class="user-dropdown" data-user-dropdown>
+          <a class="ud-item" href="login.html">Sair</a>
+        </div>
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <div class="version">v1.0 - Sistema de Escala</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="demo-banner">Protótipo de demonstração — todos os dados são fictícios. Nenhuma informação real.</div>
+    <div class="main-inner">
+
+      <div class="page-header">
+        <div class="ph-text">
+          <h1 class="page-title">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="4"/></svg>
+            Dispatch
+          </h1>
+          <p class="page-desc">Distribuir vagas entre motoristas e editar escala final</p>
+        </div>
+        <div class="header-actions">
+          <div class="week-selector">
+            <label for="week">Semana:</label>
+            <select id="week">
+              <option>33 — 16 de ago. a 22 de ago.</option>
+              <option>34 — 23 de ago. a 29 de ago.</option>
+              <option>35 — 30 de ago. a 05 de set.</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="action-bar">
+        <button class="btn btn-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Distribuir vagas
+        </button>
+        <button class="btn btn-outline">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Nova Vaga
+        </button>
+      </div>
+
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Categoria</th>
+              <th>Turno</th>
+              <th style="text-align:right;">Vagas</th>
+              <th style="text-align:right;">Atribuídas</th>
+              <th style="text-align:right;">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="cell-main">Seg 17/08</td>
+              <td><span class="pill pill-neutral">Cargo Van</span></td>
+              <td>Ciclo 1 - Manhã</td>
+              <td class="num" style="text-align:right;">18</td>
+              <td class="num" style="text-align:right;">18</td>
+              <td style="text-align:right;white-space:nowrap;">
+                <button class="btn btn-ghost btn-sm">Editar</button>
+                <button class="btn btn-destructive btn-sm">Excluir</button>
+              </td>
+            </tr>
+            <tr>
+              <td class="cell-main">Ter 18/08</td>
+              <td><span class="pill pill-neutral">Cargo Van GNV</span></td>
+              <td>Ciclo 1 - Manhã</td>
+              <td class="num" style="text-align:right;">12</td>
+              <td class="num" style="text-align:right;">11</td>
+              <td style="text-align:right;white-space:nowrap;">
+                <button class="btn btn-ghost btn-sm">Editar</button>
+                <button class="btn btn-destructive btn-sm">Excluir</button>
+              </td>
+            </tr>
+            <tr>
+              <td class="cell-main">Qua 19/08</td>
+              <td><span class="pill pill-neutral">Passenger</span></td>
+              <td>Ciclo 2 - Tarde</td>
+              <td class="num" style="text-align:right;">9</td>
+              <td class="num" style="text-align:right;">9</td>
+              <td style="text-align:right;white-space:nowrap;">
+                <button class="btn btn-ghost btn-sm">Editar</button>
+                <button class="btn btn-destructive btn-sm">Excluir</button>
+              </td>
+            </tr>
+            <tr>
+              <td class="cell-main">Qui 20/08</td>
+              <td><span class="pill pill-neutral">Small Van</span></td>
+              <td>Ciclo 2 - Tarde</td>
+              <td class="num" style="text-align:right;">14</td>
+              <td class="num" style="text-align:right;">12</td>
+              <td style="text-align:right;white-space:nowrap;">
+                <button class="btn btn-ghost btn-sm">Editar</button>
+                <button class="btn btn-destructive btn-sm">Excluir</button>
+              </td>
+            </tr>
+            <tr>
+              <td class="cell-main">Sex 21/08</td>
+              <td><span class="pill pill-neutral">Cargo Van</span></td>
+              <td>Ciclo 1 - Manhã</td>
+              <td class="num" style="text-align:right;">20</td>
+              <td class="num" style="text-align:right;">19</td>
+              <td style="text-align:right;white-space:nowrap;">
+                <button class="btn btn-ghost btn-sm">Editar</button>
+                <button class="btn btn-destructive btn-sm">Excluir</button>
+              </td>
+            </tr>
+            <tr>
+              <td class="cell-main">Sáb 22/08</td>
+              <td><span class="pill pill-neutral">Cargo Van GNV</span></td>
+              <td>Ciclo 1 - Manhã</td>
+              <td class="num" style="text-align:right;">10</td>
+              <td class="num" style="text-align:right;">8</td>
+              <td style="text-align:right;white-space:nowrap;">
+                <button class="btn btn-ghost btn-sm">Editar</button>
+                <button class="btn btn-destructive btn-sm">Excluir</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div>
+        <h2 class="section-title">Resultado da distribuição — Semana 33</h2>
+        <div class="kpi-grid" style="margin-bottom:16px;">
+          <div class="kpi-card tone-success">
+            <div class="kpi-top"><span class="kpi-label">Atribuídas</span></div>
+            <div class="kpi-value">77</div>
+            <div class="kpi-hint">de 83 vagas</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-top"><span class="kpi-label">Não atribuídas</span></div>
+            <div class="kpi-value">6</div>
+            <div class="kpi-hint">sem motorista elegível</div>
+          </div>
+          <div class="kpi-card tone-warning">
+            <div class="kpi-top"><span class="kpi-label">Abaixo da cota</span></div>
+            <div class="kpi-value">3</div>
+            <div class="kpi-hint">motoristas com menos vagas que o esperado</div>
+          </div>
+          <div class="kpi-card tone-danger">
+            <div class="kpi-top"><span class="kpi-label">CNH vencida</span></div>
+            <div class="kpi-value">2</div>
+            <div class="kpi-hint">atribuídos com CNH vencida *</div>
+          </div>
+        </div>
+
+        <div class="legend" style="margin-bottom:12px;">
+          <span>Legenda:</span>
+          <span class="pill pill-success">Sim</span>
+          <span class="pill pill-info">Passeio</span>
+          <span class="pill pill-warning">Speed</span>
+          <span class="pill pill-neutral">Sem Escala</span>
+          <span class="pill pill-purple">à confirmar</span>
+        </div>
+
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Motorista</th>
+                <th>Seg 17</th>
+                <th>Ter 18</th>
+                <th>Qua 19</th>
+                <th>Qui 20</th>
+                <th>Sex 21</th>
+                <th>Sáb 22</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="cell-main">Rafael Almeida</td>
+                <td><span class="pill pill-success">Sim</span></td>
+                <td><span class="pill pill-success">Sim</span></td>
+                <td><span class="pill pill-neutral">Sem Escala</span></td>
+                <td><span class="pill pill-success">Sim</span></td>
+                <td><span class="pill pill-success">Sim</span></td>
+                <td><span class="pill pill-info">Passeio</span></td>
+              </tr>
+              <tr>
+                <td class="cell-main">Beatriz Nogueira *</td>
+                <td><span class="pill pill-success">Sim</span></td>
+                <td><span class="pill pill-purple">à confirmar</span></td>
+                <td><span class="pill pill-success">Sim</span></td>
+                <td><span class="pill pill-neutral">Sem Escala</span></td>
+                <td><span class="pill pill-success">Sim</span></td>
+                <td><span class="pill pill-neutral">Sem Escala</span></td>
+              </tr>
+              <tr>
+                <td class="cell-main">Carlos Eduardo Lima</td>
+                <td><span class="pill pill-warning">Speed</span></td>
+                <td><span class="pill pill-success">Sim</span></td>
+                <td><span class="pill pill-success">Sim</span></td>
+                <td><span class="pill pill-success">Sim</span></td>
+                <td><span class="pill pill-neutral">Sem Escala</span></td>
+                <td><span class="pill pill-success">Sim</span></td>
+              </tr>
+              <tr>
+                <td class="cell-main">Fernanda Rodrigues</td>
+                <td><span class="pill pill-neutral">Sem Escala</span></td>
+                <td><span class="pill pill-info">Passeio</span></td>
+                <td><span class="pill pill-success">Sim</span></td>
+                <td><span class="pill pill-success">Sim</span></td>
+                <td><span class="pill pill-success">Sim</span></td>
+                <td><span class="pill pill-success">Sim</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="small muted" style="margin-top:8px;">* CNH vencida — motorista atribuído com a CNH fora da validade. Regularize antes do início da semana.</p>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<div class="drawer-overlay" data-drawer-overlay></div>
+<div class="drawer" data-drawer aria-hidden="true">
+  <div class="drawer-head">
+    <span class="brand-title" style="font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="color:var(--brand);"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+      ILLT - Escala
+    </span>
+    <button class="drawer-close" data-drawer-close aria-label="Fechar menu">&times;</button>
+  </div>
+  <nav aria-label="Navegação móvel">
+    <a href="index.html">Início</a>
+    <a href="dispatch.html" aria-current="page">Dispatch</a>
+    <a href="behavior.html">Comportamento</a>
+    <a href="drivers.html">Motoristas</a>
+    <a href="cnh.html">Cobrar CNH</a>
+    <a href="users.html">Usuários</a>
+  </nav>
+  <div class="drawer-foot">Marcos Souza — Supervisor<br>v1.0 - Sistema de Escala</div>
+</div>
+
+<div class="brand-switcher" data-brand-switcher>
+  <button class="bs-toggle" aria-expanded="false"><span class="swatch swatch-amber"></span>Cor de marca</button>
+  <div class="bs-panel">
+    <span class="bs-label">Cor de marca</span>
+    <div class="bs-options">
+      <button data-brand="amber" class="active"><span class="swatch swatch-amber"></span>Âmbar (referência)</button>
+      <button data-brand="blue"><span class="swatch swatch-blue"></span>Azul (plano)</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/preview.js"></script>
+</body>
+</html>

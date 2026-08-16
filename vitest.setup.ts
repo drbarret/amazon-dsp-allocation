@@ -1,4 +1,5 @@
 import path from "node:path";
+import "@testing-library/jest-dom/vitest";
 
 // Load local env before any test module imports the Prisma client, so
 // integration tests can reach the real database. Unit tests mock prisma and

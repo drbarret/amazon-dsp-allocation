@@ -78,7 +78,7 @@ export function OnboardingForm({ userName, userEmail }: Props) {
   const canSubmit = consent && !isPending && selectedCities.length >= 1;
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 px-4 py-8">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-page px-4 py-8">
       <Card className="w-full max-w-lg">
         <CardHeader>
           <Progress value={0} className="mb-2" />

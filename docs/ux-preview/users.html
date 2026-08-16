@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Usuários — ILLT - Escala (protótipo)</title>
+<link rel="stylesheet" href="assets/preview.css">
+</head>
+<body>
+
+<div class="mobile-topbar">
+  <button class="hamburger" data-hamburger aria-label="Abrir menu" aria-expanded="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+  </button>
+  <span class="brand-title">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+    ILLT - Escala
+  </span>
+</div>
+
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <a class="brand-title" href="index.html">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+        ILLT - Escala
+      </a>
+      <div class="brand-sub">Amazon DSP Manager</div>
+    </div>
+    <nav class="sidebar-nav" aria-label="Navegação principal">
+      <a href="index.html">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Início
+      </a>
+      <a href="dispatch.html">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="4"/></svg>
+        Dispatch
+      </a>
+      <a href="behavior.html">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 3 5-6"/></svg>
+        Comportamento
+      </a>
+      <a href="drivers.html">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Motoristas
+      </a>
+      <a href="cnh.html">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M15 8h4M15 12h4M7 16h10"/></svg>
+        Cobrar CNH
+      </a>
+      <a href="users.html" aria-current="page">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11l-3 3-2-2"/></svg>
+        Usuários
+      </a>
+    </nav>
+    <div class="sidebar-user">
+      <div class="user-menu">
+        <button class="avatar-btn" data-user-btn aria-expanded="false" aria-haspopup="true">
+          <span class="avatar">MS</span>
+          <span class="avatar-meta">
+            <span class="avatar-name">Marcos Souza</span><br>
+            <span class="avatar-role">Supervisor</span>
+          </span>
+        </button>
+        <div class="user-dropdown" data-user-dropdown>
+          <a class="ud-item" href="login.html">Sair</a>
+        </div>
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <div class="version">v1.0 - Sistema de Escala</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="demo-banner">Protótipo de demonstração — todos os dados são fictícios. Nenhuma informação real.</div>
+    <div class="main-inner">
+
+      <div class="page-header">
+        <div class="ph-text">
+          <h1 class="page-title">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11l-3 3-2-2"/></svg>
+            Usuários
+          </h1>
+          <p class="page-desc">Gerenciar papéis, acesso e dados do motorista</p>
+        </div>
+        <div class="header-actions">
+          <button class="btn btn-dark">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Convidar usuário
+          </button>
+        </div>
+      </div>
+
+      <div class="search-wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input class="input" type="search" placeholder="Buscar por nome ou e-mail..." aria-label="Buscar usuário">
+      </div>
+
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th class="sticky-col">Usuário</th>
+              <th>Papel</th>
+              <th>Motorista</th>
+              <th>Último acesso</th>
+              <th>Status</th>
+              <th style="text-align:right;">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="sticky-col">
+                <div class="cell-main">Marcos Souza</div>
+                <div class="cell-sub">marcos.souza@exemplo-demo.com</div>
+              </td>
+              <td><span class="pill pill-info">Supervisor</span></td>
+              <td class="muted">—</td>
+              <td class="mono">16/08/2026 11:02</td>
+              <td><span class="pill pill-success">Ativo</span></td>
+              <td style="text-align:right;white-space:nowrap;">
+                <button class="btn btn-ghost btn-sm">Editar</button>
+                <button class="btn btn-destructive btn-sm" aria-label="Desativar Marcos Souza">Desativar</button>
+              </td>
+            </tr>
+            <tr>
+              <td class="sticky-col">
+                <div class="cell-main">Rafael Almeida</div>
+                <div class="cell-sub">rafael.almeida@exemplo-demo.com</div>
+              </td>
+              <td><span class="pill pill-neutral">Motorista</span></td>
+              <td>
+                <div class="cell-sub">CNH 12/2027 · Cargo Van</div>
+                <div class="cell-sub">Guarulhos, São Paulo</div>
+              </td>
+              <td class="mono">15/08/2026 18:40</td>
+              <td><span class="pill pill-success">Ativo</span></td>
+              <td style="text-align:right;white-space:nowrap;">
+                <button class="btn btn-ghost btn-sm">Editar</button>
+                <button class="btn btn-destructive btn-sm" aria-label="Desativar Rafael Almeida">Desativar</button>
+              </td>
+            </tr>
+            <tr>
+              <td class="sticky-col">
+                <div class="cell-main">Beatriz Nogueira</div>
+                <div class="cell-sub">beatriz.nogueira@exemplo-demo.com</div>
+              </td>
+              <td><span class="pill pill-neutral">Motorista</span></td>
+              <td>
+                <div class="cell-sub">CNH 03/2026 · Passenger · GNV</div>
+                <div class="cell-sub">Osasco</div>
+              </td>
+              <td class="mono">14/08/2026 07:15</td>
+              <td><span class="pill pill-success">Ativo</span></td>
+              <td style="text-align:right;white-space:nowrap;">
+                <button class="btn btn-ghost btn-sm">Editar</button>
+                <button class="btn btn-destructive btn-sm" aria-label="Desativar Beatriz Nogueira">Desativar</button>
+              </td>
+            </tr>
+            <tr>
+              <td class="sticky-col">
+                <div class="cell-main">Paula Mendes</div>
+                <div class="cell-sub">paula.mendes@exemplo-demo.com</div>
+              </td>
+              <td><span class="pill pill-purple">Gerente de conta</span></td>
+              <td class="muted">—</td>
+              <td class="mono">16/08/2026 09:27</td>
+              <td><span class="pill pill-success">Ativo</span></td>
+              <td style="text-align:right;white-space:nowrap;">
+                <button class="btn btn-ghost btn-sm">Editar</button>
+                <button class="btn btn-destructive btn-sm" aria-label="Desativar Paula Mendes">Desativar</button>
+              </td>
+            </tr>
+            <tr class="row-inactive">
+              <td class="sticky-col">
+                <div class="cell-main">João Pedro Santos</div>
+                <div class="cell-sub">joao.santos@exemplo-demo.com</div>
+              </td>
+              <td><span class="pill pill-neutral">Motorista</span></td>
+              <td>
+                <div class="cell-sub">CNH 05/2025 · Passenger</div>
+                <div class="cell-sub">Mairiporã</div>
+              </td>
+              <td class="mono">22/07/2026 16:51</td>
+              <td><span class="pill pill-neutral">Inativo</span></td>
+              <td style="text-align:right;white-space:nowrap;">
+                <button class="btn btn-ghost btn-sm">Editar</button>
+                <button class="btn btn-outline btn-sm" aria-label="Reativar João Pedro Santos">Reativar</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<div class="drawer-overlay" data-drawer-overlay></div>
+<div class="drawer" data-drawer aria-hidden="true">
+  <div class="drawer-head">
+    <span class="brand-title" style="font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="color:var(--brand);"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+      ILLT - Escala
+    </span>
+    <button class="drawer-close" data-drawer-close aria-label="Fechar menu">&times;</button>
+  </div>
+  <nav aria-label="Navegação móvel">
+    <a href="index.html">Início</a>
+    <a href="dispatch.html">Dispatch</a>
+    <a href="behavior.html">Comportamento</a>
+    <a href="drivers.html">Motoristas</a>
+    <a href="cnh.html">Cobrar CNH</a>
+    <a href="users.html" aria-current="page">Usuários</a>
+  </nav>
+  <div class="drawer-foot">Marcos Souza — Supervisor<br>v1.0 - Sistema de Escala</div>
+</div>
+
+<div class="brand-switcher" data-brand-switcher>
+  <button class="bs-toggle" aria-expanded="false"><span class="swatch swatch-amber"></span>Cor de marca</button>
+  <div class="bs-panel">
+    <span class="bs-label">Cor de marca</span>
+    <div class="bs-options">
+      <button data-brand="amber" class="active"><span class="swatch swatch-amber"></span>Âmbar (referência)</button>
+      <button data-brand="blue"><span class="swatch swatch-blue"></span>Azul (plano)</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/preview.js"></script>
+</body>
+</html>

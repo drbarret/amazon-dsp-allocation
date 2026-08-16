@@ -10,7 +10,7 @@ export default async function Home() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-zinc-50 p-6 text-center">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-page p-6 text-center">
       <h1 className="text-4xl font-bold tracking-tight text-zinc-900">
         Amazon DSP Driver Allocation
       </h1>

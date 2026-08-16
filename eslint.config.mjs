@@ -16,6 +16,8 @@ const eslintConfig = defineConfig([
     "src/generated/**",
     // Utility scripts (not application code)
     "scripts/**",
+    // Design/capture scripts (documentation artifacts, not application code)
+    "docs/**/*.cjs",
   ]),
 ]);
 

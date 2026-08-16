@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cobrar CNH — ILLT - Escala (protótipo)</title>
+<link rel="stylesheet" href="assets/preview.css">
+</head>
+<body>
+
+<div class="mobile-topbar">
+  <button class="hamburger" data-hamburger aria-label="Abrir menu" aria-expanded="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+  </button>
+  <span class="brand-title">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+    ILLT - Escala
+  </span>
+</div>
+
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <a class="brand-title" href="index.html">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+        ILLT - Escala
+      </a>
+      <div class="brand-sub">Amazon DSP Manager</div>
+    </div>
+    <nav class="sidebar-nav" aria-label="Navegação principal">
+      <a href="index.html">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Início
+      </a>
+      <a href="dispatch.html">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="4"/></svg>
+        Dispatch
+      </a>
+      <a href="behavior.html">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 3 5-6"/></svg>
+        Comportamento
+      </a>
+      <a href="drivers.html">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Motoristas
+      </a>
+      <a href="cnh.html" aria-current="page">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M15 8h4M15 12h4M7 16h10"/></svg>
+        Cobrar CNH
+      </a>
+      <a href="users.html">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11l-3 3-2-2"/></svg>
+        Usuários
+      </a>
+    </nav>
+    <div class="sidebar-user">
+      <div class="user-menu">
+        <button class="avatar-btn" data-user-btn aria-expanded="false" aria-haspopup="true">
+          <span class="avatar">MS</span>
+          <span class="avatar-meta">
+            <span class="avatar-name">Marcos Souza</span><br>
+            <span class="avatar-role">Supervisor</span>
+          </span>
+        </button>
+        <div class="user-dropdown" data-user-dropdown>
+          <a class="ud-item" href="login.html">Sair</a>
+        </div>
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <div class="version">v1.0 - Sistema de Escala</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="demo-banner">Protótipo de demonstração — todos os dados são fictícios. Nenhuma informação real.</div>
+    <div class="main-inner">
+
+      <div class="page-header">
+        <div class="ph-text">
+          <h1 class="page-title">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M15 8h4M15 12h4M7 16h10"/></svg>
+            Cobrar CNH
+          </h1>
+          <p class="page-desc">Motoristas com CNH vencida. Selecione e envie a cobrança por e-mail.</p>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th style="width:40px;"><input type="checkbox" aria-label="Selecionar todos"></th>
+              <th>Motorista</th>
+              <th>CNH válida até</th>
+              <th>Última cobrança</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="row-selected">
+              <td><input type="checkbox" checked aria-label="Selecionar Beatriz Nogueira"></td>
+              <td>
+                <div class="cell-main">Beatriz Nogueira</div>
+                <div class="cell-sub">beatriz.nogueira@exemplo-demo.com</div>
+              </td>
+              <td class="mono">03/2026</td>
+              <td class="mono">02/08/2026</td>
+              <td><span class="pill pill-danger">Vencida</span></td>
+            </tr>
+            <tr class="row-selected">
+              <td><input type="checkbox" checked aria-label="Selecionar João Pedro Santos"></td>
+              <td>
+                <div class="cell-main">João Pedro Santos</div>
+                <div class="cell-sub">joao.santos@exemplo-demo.com</div>
+              </td>
+              <td class="mono">05/2025</td>
+              <td class="muted">Nunca cobrado</td>
+              <td><span class="pill pill-danger">Vencida</span></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" aria-label="Selecionar Ricardo Tavares"></td>
+              <td>
+                <div class="cell-main">Ricardo Tavares</div>
+                <div class="cell-sub">ricardo.tavares@exemplo-demo.com</div>
+              </td>
+              <td class="mono">07/2026</td>
+              <td class="mono">10/08/2026</td>
+              <td><span class="pill pill-danger">Vencida</span></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" aria-label="Selecionar Amanda Freitas"></td>
+              <td>
+                <div class="cell-main">Amanda Freitas</div>
+                <div class="cell-sub">amanda.freitas@exemplo-demo.com</div>
+              </td>
+              <td class="mono">08/2026</td>
+              <td class="mono">10/08/2026</td>
+              <td><span class="pill pill-danger">Vencida</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="action-bar">
+        <button class="btn btn-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          Enviar cobrança (2 selecionados)
+        </button>
+      </div>
+
+      <div class="card">
+        <h2 class="section-title">Resumo do último envio (demonstração)</h2>
+        <div class="result-summary">
+          <div class="result-line">
+            <span class="pill pill-success">Enviado</span>
+            <span><strong>Beatriz Nogueira</strong> — cobrança enviada com sucesso.</span>
+          </div>
+          <div class="result-line">
+            <span class="pill pill-warning">Reenvio</span>
+            <span><strong>Ricardo Tavares</strong> — já cobrado em 10/08/2026; reenvio registrado.</span>
+          </div>
+          <div class="result-line">
+            <span class="pill pill-danger">Falha</span>
+            <span><strong>Amanda Freitas</strong> — não foi possível enviar. Tente novamente.</span>
+          </div>
+          <div class="result-line">
+            <span class="pill pill-neutral">Ambiente</span>
+            <span>E-mail não configurado neste ambiente; avise o administrador. <em>(sem expor nomes de variáveis)</em></span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<div class="drawer-overlay" data-drawer-overlay></div>
+<div class="drawer" data-drawer aria-hidden="true">
+  <div class="drawer-head">
+    <span class="brand-title" style="font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="color:var(--brand);"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+      ILLT - Escala
+    </span>
+    <button class="drawer-close" data-drawer-close aria-label="Fechar menu">&times;</button>
+  </div>
+  <nav aria-label="Navegação móvel">
+    <a href="index.html">Início</a>
+    <a href="dispatch.html">Dispatch</a>
+    <a href="behavior.html">Comportamento</a>
+    <a href="drivers.html">Motoristas</a>
+    <a href="cnh.html" aria-current="page">Cobrar CNH</a>
+    <a href="users.html">Usuários</a>
+  </nav>
+  <div class="drawer-foot">Marcos Souza — Supervisor<br>v1.0 - Sistema de Escala</div>
+</div>
+
+<div class="brand-switcher" data-brand-switcher>
+  <button class="bs-toggle" aria-expanded="false"><span class="swatch swatch-amber"></span>Cor de marca</button>
+  <div class="bs-panel">
+    <span class="bs-label">Cor de marca</span>
+    <div class="bs-options">
+      <button data-brand="amber" class="active"><span class="swatch swatch-amber"></span>Âmbar (referência)</button>
+      <button data-brand="blue"><span class="swatch swatch-blue"></span>Azul (plano)</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/preview.js"></script>
+</body>
+</html>

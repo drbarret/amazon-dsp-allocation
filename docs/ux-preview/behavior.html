@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Comportamento — ILLT - Escala (protótipo)</title>
+<link rel="stylesheet" href="assets/preview.css">
+</head>
+<body>
+
+<div class="mobile-topbar">
+  <button class="hamburger" data-hamburger aria-label="Abrir menu" aria-expanded="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+  </button>
+  <span class="brand-title">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+    ILLT - Escala
+  </span>
+</div>
+
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <a class="brand-title" href="index.html">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+        ILLT - Escala
+      </a>
+      <div class="brand-sub">Amazon DSP Manager</div>
+    </div>
+    <nav class="sidebar-nav" aria-label="Navegação principal">
+      <a href="index.html">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Início
+      </a>
+      <a href="dispatch.html">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="4"/></svg>
+        Dispatch
+      </a>
+      <a href="behavior.html" aria-current="page">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 3 5-6"/></svg>
+        Comportamento
+      </a>
+      <a href="drivers.html">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Motoristas
+      </a>
+      <a href="cnh.html">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M15 8h4M15 12h4M7 16h10"/></svg>
+        Cobrar CNH
+      </a>
+      <a href="users.html">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11l-3 3-2-2"/></svg>
+        Usuários
+      </a>
+    </nav>
+    <div class="sidebar-user">
+      <div class="user-menu">
+        <button class="avatar-btn" data-user-btn aria-expanded="false" aria-haspopup="true">
+          <span class="avatar">MS</span>
+          <span class="avatar-meta">
+            <span class="avatar-name">Marcos Souza</span><br>
+            <span class="avatar-role">Supervisor</span>
+          </span>
+        </button>
+        <div class="user-dropdown" data-user-dropdown>
+          <a class="ud-item" href="login.html">Sair</a>
+        </div>
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <div class="version">v1.0 - Sistema de Escala</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="demo-banner">Protótipo de demonstração — todos os dados são fictícios. Nenhuma informação real.</div>
+    <div class="main-inner">
+
+      <div class="page-header">
+        <div class="ph-text">
+          <h1 class="page-title">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 3 5-6"/></svg>
+            Comportamento
+          </h1>
+          <p class="page-desc">Infrações, reincidência e fila de aprovação. A punição é definida pelo tipo de infração, nunca pelo supervisor.</p>
+        </div>
+        <div class="header-actions">
+          <button class="btn btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Marcar infração
+          </button>
+        </div>
+      </div>
+
+      <div class="alert alert-warning">
+        <div class="alert-title">Reincidência no ciclo</div>
+        2 motoristas atingiram o limite de infrações no ciclo atual e foram escalados automaticamente para revisão.
+      </div>
+
+      <div class="split-2">
+        <!-- Estado de carregamento (skeleton) — demonstra a correção do falso vazio -->
+        <div>
+          <h2 class="section-title">Carregando (skeleton) <span class="demo-tag">correção do falso vazio</span></h2>
+          <div class="table-wrap">
+            <div class="skel-row"><div class="skeleton sk-text" style="width:32%;"></div><div class="skeleton sk-text" style="width:18%;"></div><div class="skeleton sk-pill"></div></div>
+            <div class="skel-row"><div class="skeleton sk-text" style="width:28%;"></div><div class="skeleton sk-text" style="width:22%;"></div><div class="skeleton sk-pill"></div></div>
+            <div class="skel-row"><div class="skeleton sk-text" style="width:35%;"></div><div class="skeleton sk-text" style="width:16%;"></div><div class="skeleton sk-pill"></div></div>
+            <div class="skel-row"><div class="skeleton sk-text" style="width:30%;"></div><div class="skeleton sk-text" style="width:20%;"></div><div class="skeleton sk-pill"></div></div>
+            <div class="skel-row"><div class="skeleton sk-text" style="width:26%;"></div><div class="skeleton sk-text" style="width:24%;"></div><div class="skeleton sk-pill"></div></div>
+          </div>
+          <p class="small muted" style="margin-top:8px;">Enquanto os dados não chegam, a tela mostra skeleton — nunca "Nenhuma infração registrada" durante a carga.</p>
+        </div>
+
+        <!-- Estado carregado -->
+        <div>
+          <h2 class="section-title">Carregado</h2>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Motorista</th>
+                  <th>Tipo</th>
+                  <th>Data</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="cell-main">Carlos Eduardo Lima</td>
+                  <td>Atraso na rota</td>
+                  <td class="mono">12/08/2026</td>
+                  <td><span class="pill pill-warning">Pendente</span></td>
+                </tr>
+                <tr>
+                  <td class="cell-main">Fernanda Rodrigues</td>
+                  <td>Entrega fora da janela</td>
+                  <td class="mono">10/08/2026</td>
+                  <td><span class="pill pill-success">Aprovada</span></td>
+                </tr>
+                <tr>
+                  <td class="cell-main">Rafael Almeida</td>
+                  <td>Não comparecimento</td>
+                  <td class="mono">08/08/2026</td>
+                  <td><span class="pill pill-danger">Reincidente</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h2 class="section-title">Fila de aprovação</h2>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Motorista</th>
+                <th>Infração</th>
+                <th>Marcado por</th>
+                <th>Data</th>
+                <th style="text-align:right;">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="cell-main">Carlos Eduardo Lima</td>
+                <td>Atraso na rota</td>
+                <td>Marcos Souza</td>
+                <td class="mono">12/08/2026</td>
+                <td style="text-align:right;white-space:nowrap;">
+                  <button class="btn btn-outline btn-sm">Aprovar</button>
+                  <button class="btn btn-ghost btn-sm">Rejeitar</button>
+                </td>
+              </tr>
+              <tr>
+                <td class="cell-main">Larissa Campos</td>
+                <td>Pacote danificado</td>
+                <td>Paula Mendes</td>
+                <td class="mono">11/08/2026</td>
+                <td style="text-align:right;white-space:nowrap;">
+                  <button class="btn btn-outline btn-sm">Aprovar</button>
+                  <button class="btn btn-ghost btn-sm">Rejeitar</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<div class="drawer-overlay" data-drawer-overlay></div>
+<div class="drawer" data-drawer aria-hidden="true">
+  <div class="drawer-head">
+    <span class="brand-title" style="font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="color:var(--brand);"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+      ILLT - Escala
+    </span>
+    <button class="drawer-close" data-drawer-close aria-label="Fechar menu">&times;</button>
+  </div>
+  <nav aria-label="Navegação móvel">
+    <a href="index.html">Início</a>
+    <a href="dispatch.html">Dispatch</a>
+    <a href="behavior.html" aria-current="page">Comportamento</a>
+    <a href="drivers.html">Motoristas</a>
+    <a href="cnh.html">Cobrar CNH</a>
+    <a href="users.html">Usuários</a>
+  </nav>
+  <div class="drawer-foot">Marcos Souza — Supervisor<br>v1.0 - Sistema de Escala</div>
+</div>
+
+<div class="brand-switcher" data-brand-switcher>
+  <button class="bs-toggle" aria-expanded="false"><span class="swatch swatch-amber"></span>Cor de marca</button>
+  <div class="bs-panel">
+    <span class="bs-label">Cor de marca</span>
+    <div class="bs-options">
+      <button data-brand="amber" class="active"><span class="swatch swatch-amber"></span>Âmbar (referência)</button>
+      <button data-brand="blue"><span class="swatch swatch-blue"></span>Azul (plano)</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/preview.js"></script>
+</body>
+</html>

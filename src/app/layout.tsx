@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Amazon DSP Driver Allocation",
-  description: "Sistema de alocação de motoristas Amazon DSP",
+  title: "Amazon DSP — Escala e Alocação",
+  description: "Sistema de escala e alocação de motoristas Amazon DSP",
 };
 
 export default function RootLayout({
