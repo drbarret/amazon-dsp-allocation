@@ -1,30 +1,32 @@
 import Link from "next/link";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
+import { AuthBrand } from "@/components/auth-brand";
 import { ShieldXIcon } from "lucide-react";
 
 export default function AuthErrorPage() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-page p-4">
-      <Card className="w-full max-w-md text-center">
-        <CardHeader>
-          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
-            <ShieldXIcon className="size-6 text-destructive" />
-          </div>
-          <CardTitle className="text-xl">Acesso não autorizado</CardTitle>
-          <CardDescription>
+    <div className="flex min-h-screen items-center justify-center bg-page px-4 py-6">
+      <div className="flex w-full max-w-md flex-col items-center gap-4 rounded-xl border border-border bg-card p-8 text-center shadow-sm">
+        <AuthBrand />
+        <div className="flex size-12 items-center justify-center rounded-full bg-danger-bg">
+          <ShieldXIcon className="size-6 text-danger-fg" />
+        </div>
+        <div className="space-y-1">
+          <h1 className="text-lg font-semibold text-heading">
+            Acesso não autorizado
+          </h1>
+          <p className="text-sm leading-5 text-muted-foreground">
             Seu acesso ainda não foi liberado. Entre em contato com seu
             supervisor ou gerente de contas para solicitar a liberação.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Link
-            href="/login"
-            className="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-2.5 text-sm font-medium transition-colors hover:bg-muted"
-          >
-            Voltar ao login
-          </Link>
-        </CardContent>
-      </Card>
+          </p>
+        </div>
+        <Link
+          href="/login"
+          className={buttonVariants({ variant: "outline", className: "w-full" })}
+        >
+          Voltar ao login
+        </Link>
+      </div>
     </div>
   );
 }

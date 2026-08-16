@@ -1,8 +1,8 @@
 import { signIn } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircleIcon } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AuthBrand } from "@/components/auth-brand";
+import { CircleAlertIcon, ShieldOffIcon } from "lucide-react";
 
 export default async function LoginPage({
   searchParams,
@@ -12,56 +12,56 @@ export default async function LoginPage({
   const { error } = await searchParams;
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-page px-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader className="text-center">
-          <div className="mx-auto mb-3 flex items-center justify-center gap-2">
-            <span className="text-sm font-semibold tracking-tight text-slate-500">
-              ILLT
-            </span>
-            <span className="text-sm font-semibold tracking-tight text-amber-600">
-              Amazon DSP
-            </span>
-          </div>
-          <CardTitle className="text-xl">Acesso ao Sistema de Escala</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {error === "deactivated" && (
-            <Alert variant="destructive">
-              <AlertCircleIcon className="size-4" />
-              <AlertDescription>
-                Sua conta foi desativada. Entre em contato com o administrador.
-              </AlertDescription>
-            </Alert>
-          )}
+    <div className="flex min-h-screen items-center justify-center bg-page px-4 py-6">
+      <div className="flex w-full max-w-sm flex-col gap-4 rounded-xl border border-border bg-card p-8 shadow-sm">
+        <AuthBrand />
 
-          {error === "unauthorized" && (
-            <Alert variant="destructive">
-              <AlertCircleIcon className="size-4" />
-              <AlertDescription>
-                Seu e-mail não está autorizado a acessar o sistema. Entre em
-                contato com seu gerente.
-              </AlertDescription>
-            </Alert>
-          )}
-
-          <form
-            action={async () => {
-              "use server";
-              await signIn("amazon", { redirectTo: "/dashboard" });
-            }}
-          >
-            <Button type="submit" className="w-full" size="lg">
-              Entrar com Amazon
-            </Button>
-          </form>
-        </CardContent>
-        <CardFooter className="justify-center">
-          <p className="text-xs text-muted-foreground">
-            Use seu e-mail corporativo autorizado.
+        <div className="space-y-1 text-center">
+          <h1 className="text-lg font-semibold text-heading">Entrar</h1>
+          <p className="text-[13px] leading-5 text-muted-foreground">
+            Sistema de escala e alocação de motoristas. Acesso com sua conta
+            Amazon corporativa.
           </p>
-        </CardFooter>
-      </Card>
+        </div>
+
+        {error === "deactivated" && (
+          <Alert variant="destructive">
+            <ShieldOffIcon className="size-4" />
+            <AlertTitle>Conta desativada</AlertTitle>
+            <AlertDescription>
+              Sua conta foi desativada. Entre em contato com o administrador.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {error === "unauthorized" && (
+          <Alert variant="destructive">
+            <CircleAlertIcon className="size-4" />
+            <AlertTitle>E-mail não autorizado</AlertTitle>
+            <AlertDescription>
+              Seu e-mail não está autorizado a acessar o sistema. Entre em
+              contato com seu gerente.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <form
+          action={async () => {
+            "use server";
+            await signIn("amazon", { redirectTo: "/dashboard" });
+          }}
+        >
+          <Button type="submit" className="w-full" size="lg">
+            Entrar com Amazon
+          </Button>
+        </form>
+
+        <p className="text-center text-xs leading-4 text-muted-foreground">
+          Acesso restrito a supervisores e motoristas cadastrados.
+          <br />
+          Problemas de acesso? Fale com o administrador.
+        </p>
+      </div>
     </div>
   );
 }
