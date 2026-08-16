@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -23,16 +22,14 @@ import {
 import { toast } from "sonner";
 import {
   UserPlusIcon,
-  ShieldOffIcon,
-  ShieldCheckIcon,
-  Trash2Icon,
   SearchIcon,
-  MailIcon,
-  ClockIcon,
-  CheckCircle2Icon,
-  XCircleIcon,
   PencilIcon,
+  UsersIcon,
 } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
+import { DataTable, type DataTableColumn } from "@/components/data-table";
+import { StatusPill, type StatusPillTone } from "@/components/status-pill";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   changeUserRole,
   deactivateUser,
@@ -66,11 +63,11 @@ const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
   { value: "DRIVER", label: "Motorista" },
 ];
 
-const ROLE_BADGE_VARIANT: Record<string, "default" | "success" | "warning" | "muted"> = {
-  ADMIN: "default",
-  ACCOUNT_MANAGER: "success",
+const ROLE_PILL_TONE: Record<string, StatusPillTone> = {
+  ADMIN: "purple",
+  ACCOUNT_MANAGER: "info",
   SUPERVISOR: "warning",
-  DRIVER: "muted",
+  DRIVER: "neutral",
 };
 
 const VEHICLE_TYPE_OPTIONS: { value: string; label: string }[] = [
@@ -83,6 +80,24 @@ interface Props {
   users: UserRow[];
   currentUserId: string;
   roleLabels: Record<string, string>;
+}
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 export function UserManagementClient({ users, currentUserId, roleLabels }: Props) {
@@ -262,328 +277,285 @@ export function UserManagementClient({ users, currentUserId, roleLabels }: Props
     });
   }
 
+  function driverSummary(user: UserRow): { line1: string; line2: string } {
+    const parts: string[] = [];
+    if (user.cnhExpiration) {
+      parts.push(`CNH ${formatDate(user.cnhExpiration)}`);
+    }
+    if (user.vehicleType) {
+      parts.push(
+        VEHICLE_TYPE_OPTIONS.find((o) => o.value === user.vehicleType)?.label ??
+          user.vehicleType,
+      );
+    }
+    const line1 = parts.join(" · ");
+    const line2 =
+      user.cityPreferences && user.cityPreferences.length > 0
+        ? user.cityPreferences.join(", ")
+        : "";
+    return { line1, line2 };
+  }
+
+  const columns: DataTableColumn<UserRow>[] = [
+    {
+      header: "Usuário",
+      sticky: true,
+      className: "min-w-0",
+      cell: (user) => (
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="truncate font-medium text-foreground">
+              {user.name}
+            </span>
+            {user.id === currentUserId && (
+              <StatusPill tone="neutral">você</StatusPill>
+            )}
+            {user.source === "invite" && (
+              <StatusPill tone="warning">convite</StatusPill>
+            )}
+          </div>
+          <div className="truncate text-xs text-muted-foreground">
+            {user.email}
+          </div>
+        </div>
+      ),
+    },
+    {
+      header: "Papel",
+      className: "whitespace-nowrap",
+      cell: (user) =>
+        user.source === "user" ? (
+          <Select
+            value={user.role}
+            onValueChange={(v) => handleRoleChange(user.id, v as UserRole)}
+            disabled={isPending}
+          >
+            <SelectTrigger
+              size="sm"
+              className="w-36"
+              aria-label={`Papel de ${user.name}`}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ROLE_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <StatusPill tone={ROLE_PILL_TONE[user.role] ?? "neutral"}>
+            {roleLabels[user.role] ?? user.role}
+          </StatusPill>
+        ),
+    },
+    {
+      header: "Motorista",
+      className: "min-w-0",
+      cell: (user) => {
+        if (user.source !== "user" || user.role !== "DRIVER") {
+          return <span className="text-xs text-muted-foreground">—</span>;
+        }
+        const { line1, line2 } = driverSummary(user);
+        return (
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="truncate text-xs text-muted-foreground">
+                {line1 || "—"}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 shrink-0 px-1.5"
+                onClick={() =>
+                  setCnhEdit({
+                    userId: user.id,
+                    userName: user.name,
+                    value: user.cnhExpiration
+                      ? new Date(user.cnhExpiration).toISOString().slice(0, 10)
+                      : "",
+                  })
+                }
+                disabled={isPending}
+                aria-label={`Editar dados do motorista ${user.name}`}
+              >
+                <PencilIcon className="size-3.5 text-muted-foreground" />
+              </Button>
+            </div>
+            {line2 && (
+              <div className="truncate text-xs text-muted-foreground">
+                {line2}
+              </div>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      header: "Último acesso",
+      className: "whitespace-nowrap tabular-nums",
+      cell: (user) =>
+        user.lastLoginAt ? (
+          <span className="text-xs text-muted-foreground">
+            {formatDateTime(user.lastLoginAt)}
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">Nunca acessou</span>
+        ),
+    },
+    {
+      header: "Status",
+      className: "whitespace-nowrap",
+      cell: (user) =>
+        user.active ? (
+          <StatusPill tone="success">Ativo</StatusPill>
+        ) : (
+          <StatusPill tone="neutral">
+            {user.source === "invite" && user.allowedEmailStatus === "REVOKED"
+              ? "Revogado"
+              : "Inativo"}
+          </StatusPill>
+        ),
+    },
+    {
+      header: "Ações",
+      className: "whitespace-nowrap text-right",
+      cell: (user) => (
+        <div className="flex items-center justify-end gap-1">
+          {user.source === "user" && user.role === "DRIVER" && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  setCityEdit({
+                    userId: user.id,
+                    userName: user.name,
+                    selected: user.cityPreferences ?? [],
+                  })
+                }
+                disabled={isPending}
+                aria-label={`Editar cidades de ${user.name}`}
+              >
+                Cidades
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  setVehicleEdit({
+                    userId: user.id,
+                    userName: user.name,
+                    value: user.vehicleType ?? "CARGO_VAN",
+                  })
+                }
+                disabled={isPending}
+                aria-label={`Editar veículo de ${user.name}`}
+              >
+                Veículo
+              </Button>
+            </>
+          )}
+          {user.source === "user" ? (
+            user.active ? (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() =>
+                  setConfirmAction({
+                    type: "deactivate",
+                    userId: user.id,
+                    userName: user.name,
+                  })
+                }
+                disabled={isPending || user.id === currentUserId}
+                aria-label={`Desativar ${user.name}`}
+              >
+                Desativar
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setConfirmAction({
+                    type: "reactivate",
+                    userId: user.id,
+                    userName: user.name,
+                  })
+                }
+                disabled={isPending}
+                aria-label={`Reativar ${user.name}`}
+              >
+                Reativar
+              </Button>
+            )
+          ) : user.allowedEmailStatus === "ACTIVE" ? (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() =>
+                setConfirmAction({
+                  type: "revoke",
+                  userId: user.allowedEmailId!,
+                  userName: user.email,
+                })
+              }
+              disabled={isPending}
+              aria-label={`Revogar convite de ${user.email}`}
+            >
+              Revogar
+            </Button>
+          ) : null}
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="space-y-6 p-4 sm:p-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-900">
-            Usuários e Perfis
-          </h1>
-          <p className="text-sm text-zinc-500">
-            Gerencie usuários, papéis e convites de acesso ao sistema.
-          </p>
-        </div>
-        <Button onClick={() => setInviteOpen(true)} disabled={isPending}>
-          <UserPlusIcon className="mr-2 size-4" />
-          Convidar Usuário
-        </Button>
-      </div>
+      <PageHeader
+        title="Usuários"
+        description="Gerenciar papéis, acesso e dados do motorista."
+        actions={
+          <Button onClick={() => setInviteOpen(true)} disabled={isPending}>
+            <UserPlusIcon className="mr-2 size-4" />
+            Convidar usuário
+          </Button>
+        }
+      />
 
       {/* Search */}
       <div className="relative">
-        <SearchIcon className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-400" />
+        <SearchIcon className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           placeholder="Buscar por nome, e-mail ou papel..."
+          aria-label="Buscar usuário"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="pl-9"
         />
       </div>
 
-      {/* User table */}
-      <div className="overflow-x-auto rounded-lg border bg-white">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b bg-zinc-50 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
-              <th className="px-4 py-3">Usuário</th>
-              <th className="px-4 py-3">E-mail</th>
-              <th className="px-4 py-3">Papel</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Perfil</th>
-              <th className="px-4 py-3">CNH</th>
-              <th className="px-4 py-3">Cidades</th>
-              <th className="px-4 py-3">Veículo</th>
-              <th className="px-4 py-3">Último Acesso</th>
-              <th className="px-4 py-3 text-right">Ações</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {filtered.map((user) => (
-              <tr
-                key={user.id}
-                className={
-                  user.source === "invite"
-                    ? "bg-amber-50/50"
-                    : user.active
-                      ? "hover:bg-zinc-50"
-                      : "bg-zinc-50 text-zinc-400"
-                }
-              >
-                {/* Name */}
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-zinc-900">
-                      {user.name}
-                    </span>
-                    {user.id === currentUserId && (
-                      <Badge variant="muted" className="text-[10px]">você</Badge>
-                    )}
-                    {user.source === "invite" && (
-                      <Badge variant="warning" className="text-[10px]">convite</Badge>
-                    )}
-                  </div>
-                </td>
+      <DataTable
+        columns={columns}
+        rows={filtered}
+        dense
+        ariaLabel="Usuários do sistema"
+        empty={{
+          icon: UsersIcon,
+          title: search
+            ? "Nenhum usuário encontrado para esta busca"
+            : "Nenhum usuário cadastrado",
+          hint: search
+            ? "Limpe a busca ou ajuste os critérios para ver mais resultados."
+            : "Convide o primeiro usuário para começar.",
+        }}
+      />
 
-                {/* Email */}
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-1.5">
-                    <MailIcon className="size-3.5 text-zinc-400" />
-                    <span className="text-zinc-600">{user.email}</span>
-                  </div>
-                </td>
-
-                {/* Role */}
-                <td className="px-4 py-3">
-                  {user.source === "user" ? (
-                    <Select
-                      value={user.role}
-                      onValueChange={(v) => handleRoleChange(user.id, v as UserRole)}
-                      disabled={isPending}
-                    >
-                      <SelectTrigger size="sm" className="w-36">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {ROLE_OPTIONS.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <Badge variant={ROLE_BADGE_VARIANT[user.role] ?? "muted"}>
-                      {roleLabels[user.role] ?? user.role}
-                    </Badge>
-                  )}
-                </td>
-
-                {/* Active status */}
-                <td className="px-4 py-3">
-                  {user.active ? (
-                    <Badge variant="success" className="gap-1">
-                      <CheckCircle2Icon className="size-3" />
-                      Ativo
-                    </Badge>
-                  ) : (
-                    <Badge variant="destructive" className="gap-1">
-                      <XCircleIcon className="size-3" />
-                      {user.source === "invite" && user.allowedEmailStatus === "REVOKED"
-                        ? "Revogado"
-                        : "Inativo"}
-                    </Badge>
-                  )}
-                </td>
-
-                {/* Onboarding */}
-                <td className="px-4 py-3">
-                  {user.source === "invite" ? (
-                    <span className="text-xs text-zinc-400">—</span>
-                  ) : user.onboardingCompleted ? (
-                    <Badge variant="success" className="text-[10px]">Completo</Badge>
-                  ) : (
-                    <Badge variant="muted" className="text-[10px]">Pendente</Badge>
-                  )}
-                </td>
-
-                {/* CNH */}
-                <td className="px-4 py-3">
-                  {user.source === "user" && user.role === "DRIVER" ? (
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs text-zinc-600">
-                        {user.cnhExpiration
-                          ? new Date(user.cnhExpiration).toLocaleDateString("pt-BR", {
-                              day: "2-digit",
-                              month: "2-digit",
-                              year: "numeric",
-                            })
-                          : "—"}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-1.5"
-                        onClick={() =>
-                          setCnhEdit({
-                            userId: user.id,
-                            userName: user.name,
-                            value: user.cnhExpiration
-                              ? new Date(user.cnhExpiration).toISOString().slice(0, 10)
-                              : "",
-                          })
-                        }
-                        disabled={isPending}
-                        title="Editar data da CNH"
-                      >
-                        <PencilIcon className="size-3.5 text-zinc-500" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <span className="text-xs text-zinc-400">—</span>
-                  )}
-                </td>
-
-                {/* Cidades */}
-                <td className="px-4 py-3">
-                  {user.source === "user" && user.role === "DRIVER" ? (
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs text-zinc-600">
-                        {user.cityPreferences && user.cityPreferences.length > 0
-                          ? user.cityPreferences.join(", ")
-                          : "—"}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-1.5"
-                        onClick={() =>
-                          setCityEdit({
-                            userId: user.id,
-                            userName: user.name,
-                            selected: user.cityPreferences ?? [],
-                          })
-                        }
-                        disabled={isPending}
-                        title="Editar cidades de preferência"
-                      >
-                        <PencilIcon className="size-3.5 text-zinc-500" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <span className="text-xs text-zinc-400">—</span>
-                  )}
-                </td>
-
-                {/* Veículo */}
-                <td className="px-4 py-3">
-                  {user.source === "user" && user.role === "DRIVER" ? (
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs text-zinc-600">
-                        {VEHICLE_TYPE_OPTIONS.find((o) => o.value === user.vehicleType)?.label ??
-                          user.vehicleType ??
-                          "—"}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-1.5"
-                        onClick={() =>
-                          setVehicleEdit({
-                            userId: user.id,
-                            userName: user.name,
-                            value: user.vehicleType ?? "CARGO_VAN",
-                          })
-                        }
-                        disabled={isPending}
-                        title="Editar categoria de veículo"
-                      >
-                        <PencilIcon className="size-3.5 text-zinc-500" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <span className="text-xs text-zinc-400">—</span>
-                  )}
-                </td>
-
-                {/* Last login */}
-                <td className="px-4 py-3">
-                  {user.lastLoginAt ? (
-                    <div className="flex items-center gap-1.5 text-xs text-zinc-500">
-                      <ClockIcon className="size-3" />
-                      {new Date(user.lastLoginAt).toLocaleDateString("pt-BR", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        year: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </div>
-                  ) : (
-                    <span className="text-xs text-zinc-400">Nunca acessou</span>
-                  )}
-                </td>
-
-                {/* Actions */}
-                <td className="px-4 py-3 text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    {user.source === "user" ? (
-                      user.active ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            setConfirmAction({
-                              type: "deactivate",
-                              userId: user.id,
-                              userName: user.name,
-                            })
-                          }
-                          disabled={isPending || user.id === currentUserId}
-                          title="Desativar usuário"
-                        >
-                          <ShieldOffIcon className="size-4 text-destructive" />
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            setConfirmAction({
-                              type: "reactivate",
-                              userId: user.id,
-                              userName: user.name,
-                            })
-                          }
-                          disabled={isPending}
-                          title="Reativar usuário"
-                        >
-                          <ShieldCheckIcon className="size-4 text-emerald-600" />
-                        </Button>
-                      )
-                    ) : user.allowedEmailStatus === "ACTIVE" ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() =>
-                          setConfirmAction({
-                            type: "revoke",
-                            userId: user.allowedEmailId!,
-                            userName: user.email,
-                          })
-                        }
-                        disabled={isPending}
-                        title="Revogar convite"
-                      >
-                        <Trash2Icon className="size-4 text-destructive" />
-                      </Button>
-                    ) : null}
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {filtered.length === 0 && (
-              <tr>
-                <td colSpan={10} className="px-4 py-8 text-center text-sm text-zinc-400">
-                  Nenhum usuário encontrado.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <p className="text-xs text-zinc-400">
+      <p className="text-xs text-muted-foreground">
         Mostrando {filtered.length} de {users.length} usuários
         {search ? " (filtrado)" : ""}
       </p>
@@ -638,50 +610,41 @@ export function UserManagementClient({ users, currentUserId, roleLabels }: Props
       </Dialog>
 
       {/* Confirm Dialog */}
-      <Dialog
+      <ConfirmDialog
         open={confirmAction !== null}
         onOpenChange={(open) => {
           if (!open) setConfirmAction(null);
         }}
-      >
-        <DialogHeader>
-          <DialogTitle>
-            {confirmAction?.type === "deactivate"
-              ? "Desativar Usuário"
-              : confirmAction?.type === "reactivate"
-                ? "Reativar Usuário"
-                : "Revogar Convite"}
-          </DialogTitle>
-          <DialogDescription>
-            {confirmAction?.type === "deactivate"
-              ? `Tem certeza que deseja desativar ${confirmAction?.userName}? O usuário não poderá fazer login até ser reativado.`
-              : confirmAction?.type === "reactivate"
-                ? `Tem certeza que deseja reativar ${confirmAction?.userName}?`
-                : `Tem certeza que deseja revogar o convite de ${confirmAction?.userName}?`}
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setConfirmAction(null)}>
-            Cancelar
-          </Button>
-          <Button
-            variant={confirmAction?.type === "reactivate" ? "default" : "destructive"}
-            onClick={() => {
-              if (!confirmAction) return;
-              if (confirmAction.type === "deactivate") handleDeactivate(confirmAction.userId);
-              else if (confirmAction.type === "reactivate") handleReactivate(confirmAction.userId);
-              else if (confirmAction.type === "revoke") handleRevoke(confirmAction.userId);
-            }}
-            disabled={isPending}
-          >
-            {confirmAction?.type === "deactivate"
-              ? "Desativar"
-              : confirmAction?.type === "reactivate"
-                ? "Reativar"
-                : "Revogar"}
-          </Button>
-        </DialogFooter>
-      </Dialog>
+        title={
+          confirmAction?.type === "deactivate"
+            ? "Desativar usuário"
+            : confirmAction?.type === "reactivate"
+              ? "Reativar usuário"
+              : "Revogar convite"
+        }
+        description={
+          confirmAction?.type === "deactivate"
+            ? `Tem certeza que deseja desativar ${confirmAction?.userName}? O usuário não poderá fazer login até ser reativado.`
+            : confirmAction?.type === "reactivate"
+              ? `Tem certeza que deseja reativar ${confirmAction?.userName}? O usuário voltará a ter acesso ao sistema.`
+              : `Tem certeza que deseja revogar o convite de ${confirmAction?.userName}? O e-mail não poderá mais se cadastrar.`
+        }
+        confirmLabel={
+          confirmAction?.type === "deactivate"
+            ? "Desativar"
+            : confirmAction?.type === "reactivate"
+              ? "Reativar"
+              : "Revogar"
+        }
+        tone={confirmAction?.type === "reactivate" ? "default" : "destructive"}
+        pending={isPending}
+        onConfirm={() => {
+          if (!confirmAction) return;
+          if (confirmAction.type === "deactivate") handleDeactivate(confirmAction.userId);
+          else if (confirmAction.type === "reactivate") handleReactivate(confirmAction.userId);
+          else if (confirmAction.type === "revoke") handleRevoke(confirmAction.userId);
+        }}
+      />
 
       {/* CNH Edit Dialog */}
       <Dialog open={cnhEdit !== null} onOpenChange={(open) => { if (!open) setCnhEdit(null); }}>

@@ -32,6 +32,8 @@ const DATABASE_URL = process.env.DATABASE_URL;
 const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3100";
 
 const UID = "e2e-shell-geometry-temp";
+const TCID = "e2e-shell-geometry-tc";
+const WEEKID = "e2e-shell-geometry-week";
 const EMAIL = "e2e-shell-geometry@instalog.com.br";
 const COOKIE = "authjs.session-token";
 
@@ -66,6 +68,21 @@ type Geometry = {
   aside: { x: number; y: number; w: number; h: number } | null;
   asideVisible: boolean;
   main: { x: number; y: number; w: number; h: number } | null;
+};
+
+type TableGeometry = {
+  tableCount: number;
+  tables: {
+    index: number;
+    scrollW: number;
+    clientW: number;
+    overflowsContainer: boolean;
+    containerScrollW: number;
+    containerClientW: number;
+    containerHasHScroll: boolean;
+    lastCellRect: { right: number; viewportRight: number } | null;
+    lastCellClipped: boolean;
+  }[];
 };
 
 async function measure(
@@ -116,6 +133,72 @@ async function measure(
         aside: rect(aside),
         asideVisible: aside ? getComputedStyle(aside).display !== "none" : false,
         main: rect(main),
+      };
+    });
+  } finally {
+    await context.close();
+  }
+}
+
+async function measureTables(
+  browser: Browser,
+  path: string,
+  width: number,
+  height: number,
+  token: string,
+): Promise<TableGeometry> {
+  const context = await browser.newContext({ viewport: { width, height } });
+  await context.addCookies([
+    {
+      name: COOKIE,
+      value: token,
+      domain: "localhost",
+      path: "/",
+      httpOnly: true,
+      sameSite: "Lax",
+    },
+  ]);
+  const page = await context.newPage();
+  try {
+    await page.goto(`${BASE_URL}${path}`, { waitUntil: "networkidle", timeout: 30_000 });
+    return await page.evaluate(() => {
+      const vw = document.documentElement.clientWidth;
+      const tables = Array.from(document.querySelectorAll("table"));
+      return {
+        tableCount: tables.length,
+        tables: tables.map((table, index) => {
+          const container = table.closest("div.overflow-x-auto");
+          const containerEl = container ?? table.parentElement;
+          const containerScrollW = containerEl?.scrollWidth ?? 0;
+          const containerClientW = containerEl?.clientWidth ?? 0;
+
+          // Check if the last cell of the first data row is clipped
+          const firstRow = table.querySelector("tbody tr");
+          let lastCellRect: { right: number; viewportRight: number } | null = null;
+          let lastCellClipped = false;
+          if (firstRow) {
+            const cells = firstRow.querySelectorAll("td");
+            const lastCell = cells[cells.length - 1];
+            if (lastCell) {
+              const r = lastCell.getBoundingClientRect();
+              lastCellRect = { right: r.right, viewportRight: vw };
+              // Cell is clipped if it extends beyond the viewport
+              lastCellClipped = r.right > vw;
+            }
+          }
+
+          return {
+            index,
+            scrollW: table.scrollWidth,
+            clientW: table.clientWidth,
+            overflowsContainer: table.scrollWidth > table.clientWidth,
+            containerScrollW,
+            containerClientW,
+            containerHasHScroll: containerScrollW > containerClientW,
+            lastCellRect,
+            lastCellClipped,
+          };
+        }),
       };
     });
   } finally {
@@ -224,4 +307,113 @@ test.describe("shell geometry (protected screens)", () => {
     expect(g.horizontalOverflow).toBe(false);
     expect(g.asideVisible).toBe(false);
   });
+});
+
+test.describe("table geometry (data tables)", () => {
+  test.skip(SKIP_E2E, "SKIP_E2E_TESTS=1 set — explicit opt-out (CI without DB)");
+
+  let client: pg.Client;
+  let token: string;
+
+  test.beforeAll(async () => {
+    if (!AUTH_SECRET || !DATABASE_URL) {
+      throw new Error(
+        "E2E geometry tests require AUTH_SECRET and DATABASE_URL. " +
+          "Set them, or opt out explicitly with SKIP_E2E_TESTS=1.",
+      );
+    }
+    client = new pg.Client({ connectionString: DATABASE_URL });
+    await client.connect();
+    await client.query(`SELECT 1`);
+
+    await client.query(`DELETE FROM "allowed_emails" WHERE email = $1`, [EMAIL]);
+    await client.query(`DELETE FROM "users" WHERE id = $1`, [UID]);
+    await client.query(`DELETE FROM "transport_companies" WHERE id = $1`, [TCID]);
+    // A transport company is required so /dispatch renders its tables instead
+    // of the "no transport company" empty state.
+    await client.query(
+      `INSERT INTO "transport_companies" ("id", "name", "createdAt", "updatedAt")
+       VALUES ($1, 'E2E Shell Transport', now(), now())`,
+      [TCID],
+    );
+    await client.query(
+      `INSERT INTO "users" ("id", "email", "name", "role", "active", "transportCompanyId", "createdAt", "updatedAt")
+       VALUES ($1, $2, 'E2E Shell', 'SUPERVISOR', true, $3, now(), now())`,
+      [UID, EMAIL, TCID],
+    );
+    await client.query(
+      `INSERT INTO "allowed_emails" ("id", "email", "role", "status", "createdAt", "updatedAt")
+       VALUES (gen_random_uuid(), $1, 'SUPERVISOR', 'ACTIVE', now(), now())`,
+      [EMAIL],
+    );
+    // One DispatchWeek so /dispatch renders the vacancies DataTable (with its
+    // own empty state) instead of the "no week registered" empty state.
+    await client.query(`DELETE FROM "dispatch_weeks" WHERE id = $1`, [WEEKID]);
+    await client.query(
+      `INSERT INTO "dispatch_weeks"
+         ("id", "transportCompanyId", "weekKey", "year", "weekNumber", "startDate", "endDate", "status", "createdAt", "updatedAt")
+       VALUES ($1, $2, 'WK-E2E', 2026, 33, '2026-08-16', '2026-08-22', 'PLANNING', now(), now())`,
+      [WEEKID, TCID],
+    );
+    token = await forgeJWT({
+      id: UID,
+      email: EMAIL,
+      name: "E2E Shell",
+      role: "SUPERVISOR",
+      active: true,
+      roleLastFetched: Date.now(),
+    });
+  });
+
+  test.afterAll(async () => {
+    if (client) {
+      await client.query(`DELETE FROM "allowed_emails" WHERE email = $1`, [EMAIL]);
+      await client.query(`DELETE FROM "users" WHERE id = $1`, [UID]);
+      await client.query(`DELETE FROM "dispatch_weeks" WHERE id = $1`, [WEEKID]);
+      await client.query(`DELETE FROM "transport_companies" WHERE id = $1`, [TCID]);
+      await client.end();
+    }
+  });
+
+  for (const path of ["/drivers", "/cnh", "/dispatch", "/behavior"]) {
+    test(`${path} @390: table fits viewport, no page h-overflow, container scrolls explicitly`, async ({
+      browser,
+    }) => {
+      const g = await measure(browser, path, 390, 844, token);
+      expect(g.horizontalOverflow).toBe(false);
+
+      const tg = await measureTables(browser, path, 390, 844, token);
+      expect(tg.tableCount).toBeGreaterThan(0);
+
+      for (const t of tg.tables) {
+        // If the table is wider than its container, the container must
+        // scroll horizontally (explicit, not accidental page overflow).
+        if (t.overflowsContainer) {
+          expect(
+            t.containerHasHScroll,
+            `table ${t.index}: overflows container but container has no h-scroll ` +
+              `(table scrollW=${t.scrollW} > clientW=${t.clientW}, ` +
+              `container scrollW=${t.containerScrollW} > clientW=${t.containerClientW})`,
+          ).toBe(true);
+        }
+      }
+    });
+
+    test(`${path} @1440: table fits viewport, no page h-overflow, no clipped last column`, async ({
+      browser,
+    }) => {
+      const g = await measure(browser, path, 1440, 900, token);
+      expect(g.horizontalOverflow).toBe(false);
+
+      const tg = await measureTables(browser, path, 1440, 900, token);
+      expect(tg.tableCount).toBeGreaterThan(0);
+
+      for (const t of tg.tables) {
+        expect(
+          t.lastCellClipped,
+          `table ${t.index}: last cell clipped (right=${t.lastCellRect?.right} > vw=${t.lastCellRect?.viewportRight})`,
+        ).toBe(false);
+      }
+    });
+  }
 });
