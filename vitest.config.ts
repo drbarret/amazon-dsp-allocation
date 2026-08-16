@@ -7,6 +7,9 @@ export default defineConfig({
     environment: "node",
     globals: true,
     setupFiles: ["./vitest.setup.ts"],
+    // Playwright e2e specs live in ./e2e and run via `npm run test:e2e`;
+    // they must never be collected by vitest.
+    exclude: ["e2e/**", "**/node_modules/**"],
     // Run test files sequentially. Integration suites capture a row-count
     // baseline in beforeAll and assert restoration in afterAll; when two
     // suites run in parallel, one can capture its baseline before the other

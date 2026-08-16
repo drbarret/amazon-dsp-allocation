@@ -49,7 +49,7 @@ export default async function ProtectedLayout({
   }
 
   return (
-    <div className="flex min-h-screen bg-page">
+    <div className="flex min-h-screen flex-col bg-page lg:flex-row">
       <AppSidebar
         items={navItems}
         userName={session.user.name ?? "Usuário"}
