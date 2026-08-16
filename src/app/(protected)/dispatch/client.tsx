@@ -27,17 +27,31 @@ import {
   CalendarIcon,
   UsersIcon,
   SparklesIcon,
+  CalendarOffIcon,
 } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
+import { ActionBar } from "@/components/action-bar";
+import { WeekSelector } from "@/components/week-selector";
+import { DataTable, type DataTableColumn } from "@/components/data-table";
+import { KpiCard } from "@/components/kpi-card";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { EmptyState } from "@/components/empty-state";
 import {
   createVacancy,
   updateVacancy,
   deleteVacancy,
   listVacancies,
   runDistribution,
-  VEHICLE_TYPES,
 } from "./actions";
 import type { DispatchWeek, Vacancy, VehicleType } from "@/generated/prisma";
 import type { RunDistributionResult } from "./actions";
+
+// Display constant — must live in a client-safe module. It used to be
+// imported from ./actions (a "use server" file), which made Next.js hand the
+// client a server-action reference instead of the array and crashed the page
+// with "VEHICLE_TYPES.map is not a function" for any user with a transport
+// company.
+const VEHICLE_TYPES: VehicleType[] = ["CARGO_VAN", "LARGE_VAN", "PASSEIO"];
 
 const VEHICLE_LABELS: Record<VehicleType, string> = {
   CARGO_VAN: "Cargo Van",
@@ -60,6 +74,10 @@ interface Props {
   weeks: DispatchWeek[];
   drivers: DriverRow[];
   hasTransportCompany: boolean;
+}
+
+function formatDate(d: Date | string): string {
+  return new Date(d).toLocaleDateString("pt-BR");
 }
 
 export function DispatchClient({ weeks, drivers, hasTransportCompany }: Props) {
@@ -210,345 +228,341 @@ export function DispatchClient({ weeks, drivers, hasTransportCompany }: Props) {
     });
   }
 
+  const vacancyColumns: DataTableColumn<Vacancy>[] = [
+    {
+      header: "Data",
+      sticky: true,
+      cell: (v) => (
+        <span className="flex items-center gap-1.5">
+          <CalendarIcon className="size-3.5 text-muted-foreground" />
+          {formatDate(v.date)}
+        </span>
+      ),
+    },
+    {
+      header: "Categoria",
+      cell: (v) => <Badge variant="muted">{VEHICLE_LABELS[v.vehicleType]}</Badge>,
+    },
+    { header: "Turno/Bloco", cell: (v) => v.shiftBlock },
+    {
+      header: "Quantidade",
+      className: "text-right tabular-nums",
+      cell: (v) => v.quantity,
+    },
+    {
+      header: "Ações",
+      className: "text-right",
+      cell: (v) => (
+        <span className="flex items-center justify-end gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => openEdit(v)}
+            disabled={isPending}
+            aria-label={`Editar vaga de ${formatDate(v.date)}`}
+          >
+            <PencilIcon className="size-4 text-muted-foreground" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setConfirmDelete(v)}
+            disabled={isPending}
+            aria-label={`Excluir vaga de ${formatDate(v.date)}`}
+          >
+            <Trash2Icon className="size-4 text-destructive" />
+          </Button>
+        </span>
+      ),
+    },
+  ];
+
+  const driverColumns: DataTableColumn<DriverRow>[] = [
+    {
+      header: "Motorista",
+      sticky: true,
+      cell: (d) => (
+        <span className="flex items-center gap-1.5">
+          <UsersIcon className="size-3.5 text-muted-foreground" />
+          <span>
+            <span className="block font-medium text-foreground">{d.name}</span>
+            <span className="block text-xs text-muted-foreground">{d.email}</span>
+          </span>
+        </span>
+      ),
+    },
+    {
+      header: "Veículo",
+      cell: (d) =>
+        d.driverProfile ? (
+          <span className="flex flex-col gap-0.5">
+            <Badge variant="muted" className="text-[10px]">
+              {VEHICLE_LABELS[d.driverProfile.vehicleType]}
+            </Badge>
+            {!d.driverProfile.onboardingCompleted && (
+              <span className="text-[10px] text-warning-fg">Pendente</span>
+            )}
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        ),
+    },
+  ];
+
   if (!hasTransportCompany) {
     return (
       <div className="space-y-6 p-4 sm:p-6">
-        <h1 className="text-2xl font-bold tracking-tight text-zinc-900">
-          Distribuição de Vagas
-        </h1>
-        <p className="text-sm text-zinc-500">
-          Seu usuário não está vinculado a uma transportadora. Entre em contato com o administrador.
-        </p>
+        <PageHeader title="Distribuição de Vagas" />
+        <EmptyState
+          icon={UsersIcon}
+          title="Usuário sem transportadora"
+          hint="Seu usuário não está vinculado a uma transportadora. Entre em contato com o administrador."
+        />
       </div>
     );
   }
 
+  const noWeeks = weeks.length === 0;
+
   return (
     <div className="space-y-6 p-4 sm:p-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-900">
-            Distribuição de Vagas
-          </h1>
-          <p className="text-sm text-zinc-500">
-            Cadastre as vagas da semana e visualize os motoristas disponíveis.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            onClick={handleRunDistribution}
-            disabled={isPending || isDistributing || !selectedWeekId}
-            title="Executa o algoritmo de distribuição de vagas"
-          >
-            <SparklesIcon className="mr-2 size-4" />
-            {isDistributing ? "Distribuindo..." : "Distribuir vagas"}
-          </Button>
-          <Button onClick={openCreate} disabled={isPending || !selectedWeekId}>
-            <PlusIcon className="mr-2 size-4" />
-            Nova Vaga
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Distribuição de Vagas"
+        description="Cadastre as vagas da semana e distribua entre os motoristas."
+        actions={
+          noWeeks ? undefined : (
+            <WeekSelector
+              weeks={weeks.map((w) => ({
+                id: w.id,
+                weekKey: w.weekKey,
+                startDate: formatDate(w.startDate),
+                endDate: formatDate(w.endDate),
+              }))}
+              value={selectedWeekId}
+              onChange={(id) => {
+                setSelectedWeekId(id);
+                loadVacancies(id);
+              }}
+              disabled={isPending}
+            />
+          )
+        }
+      />
 
-      {/* Week selector */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <Label htmlFor="week-select" className="text-sm font-medium text-zinc-700">
-          Semana
-        </Label>
-        <Select
-          value={selectedWeekId}
-          onValueChange={(v) => {
-            if (!v) return;
-            setSelectedWeekId(v);
-            loadVacancies(v);
-          }}
-          disabled={isPending}
-        >
-          <SelectTrigger id="week-select" className="w-full sm:w-80">
-            <SelectValue placeholder="Selecione uma semana" />
-          </SelectTrigger>
-          <SelectContent>
-            {weeks.map((w) => (
-              <SelectItem key={w.id} value={w.id}>
-                {w.weekKey} — {new Date(w.startDate).toLocaleDateString("pt-BR")} a{" "}
-                {new Date(w.endDate).toLocaleDateString("pt-BR")}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {weeks.length === 0 && (
-          <span className="text-xs text-zinc-400">Nenhuma semana cadastrada.</span>
-        )}
-      </div>
+      {noWeeks ? (
+        <EmptyState
+          icon={CalendarOffIcon}
+          title="Nenhuma semana de distribuição cadastrada"
+          hint="Ainda não existe nenhuma semana (DispatchWeek) cadastrada para a sua transportadora. O cadastro de semanas estará disponível em uma próxima fase — por enquanto, peça ao administrador para cadastrar a semana."
+        />
+      ) : (
+        <>
+          <ActionBar>
+            <Button
+              onClick={handleRunDistribution}
+              disabled={isPending || isDistributing || !selectedWeekId}
+              title="Executa o algoritmo de distribuição de vagas"
+            >
+              <SparklesIcon className="mr-2 size-4" />
+              {isDistributing ? "Distribuindo..." : "Distribuir vagas"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={openCreate}
+              disabled={isPending || !selectedWeekId}
+            >
+              <PlusIcon className="mr-2 size-4" />
+              Nova Vaga
+            </Button>
+          </ActionBar>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Vacancies */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-zinc-900">Vagas da Semana</h2>
-            {selectedWeek && (
-              <Badge variant="muted">
-                {vacancies.reduce((sum, v) => sum + v.quantity, 0)} vagas
-              </Badge>
-            )}
-          </div>
-
-          <div className="overflow-x-auto rounded-lg border bg-white">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-zinc-50 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
-                  <th className="px-4 py-3">Data</th>
-                  <th className="px-4 py-3">Categoria</th>
-                  <th className="px-4 py-3">Turno/Bloco</th>
-                  <th className="px-4 py-3">Quantidade</th>
-                  <th className="px-4 py-3 text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {isLoadingVacancies ? (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-sm text-zinc-400">
-                      Carregando vagas...
-                    </td>
-                  </tr>
-                ) : vacancies.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-sm text-zinc-400">
-                      Nenhuma vaga cadastrada para esta semana.
-                    </td>
-                  </tr>
-                ) : (
-                  vacancies.map((v) => (
-                    <tr key={v.id} className="hover:bg-zinc-50">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5">
-                          <CalendarIcon className="size-3.5 text-zinc-400" />
-                          <span>{new Date(v.date).toLocaleDateString("pt-BR")}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge variant="muted">{VEHICLE_LABELS[v.vehicleType]}</Badge>
-                      </td>
-                      <td className="px-4 py-3 text-zinc-700">{v.shiftBlock}</td>
-                      <td className="px-4 py-3 text-zinc-700">{v.quantity}</td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openEdit(v)}
-                            disabled={isPending}
-                            title="Editar vaga"
-                          >
-                            <PencilIcon className="size-4 text-zinc-500" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setConfirmDelete(v)}
-                            disabled={isPending}
-                            title="Excluir vaga"
-                          >
-                            <Trash2Icon className="size-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+          <div className="grid gap-6 lg:grid-cols-3">
+            {/* Vacancies */}
+            <div className="min-w-0 lg:col-span-2 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-heading">Vagas da Semana</h2>
+                {selectedWeek && (
+                  <Badge variant="muted">
+                    {vacancies.reduce((sum, v) => sum + v.quantity, 0)} vagas
+                  </Badge>
                 )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+              </div>
 
-        {/* Drivers */}
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold text-zinc-900">Motoristas Ativos</h2>
-          <div className="overflow-x-auto rounded-lg border bg-white">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-zinc-50 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
-                  <th className="px-4 py-3">Motorista</th>
-                  <th className="px-4 py-3">Veículo</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {drivers.length === 0 ? (
-                  <tr>
-                    <td colSpan={2} className="px-4 py-8 text-center text-sm text-zinc-400">
-                      Nenhum motorista ativo.
-                    </td>
-                  </tr>
-                ) : (
-                  drivers.map((d) => (
-                    <tr key={d.id} className="hover:bg-zinc-50">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5">
-                          <UsersIcon className="size-3.5 text-zinc-400" />
-                          <div>
-                            <div className="font-medium text-zinc-900">{d.name}</div>
-                            <div className="text-xs text-zinc-500">{d.email}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        {d.driverProfile ? (
-                          <div className="flex flex-col gap-0.5">
-                            <Badge variant="muted" className="text-[10px]">
-                              {VEHICLE_LABELS[d.driverProfile.vehicleType]}
-                            </Badge>
-                            {!d.driverProfile.onboardingCompleted && (
-                              <span className="text-[10px] text-amber-600">Pendente</span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-xs text-zinc-400">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+              <DataTable
+                columns={vacancyColumns}
+                rows={vacancies}
+                loading={isLoadingVacancies}
+                ariaLabel="Vagas da semana"
+                empty={{
+                  icon: CalendarIcon,
+                  title: "Nenhuma vaga cadastrada para esta semana",
+                  hint: "Crie a primeira vaga para poder distribuir.",
+                  action: { label: "Nova Vaga", onClick: openCreate },
+                }}
+              />
+            </div>
 
-      {/* Distribution results */}
-      {distribution && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-zinc-900">Resultado da Distribuição</h2>
-            <div className="flex items-center gap-2">
-              <Badge variant="muted">{distribution.assignedCount} atribuídas</Badge>
-              <Badge variant="muted">{distribution.unassignedCount} não atribuídas</Badge>
-              <Badge variant="muted">{distribution.underQuotaCount} abaixo da cota</Badge>
-              {distribution.expiredCnhCount > 0 && (
-                <Badge variant="destructive">{distribution.expiredCnhCount} CNH vencida</Badge>
-              )}
+            {/* Drivers */}
+            <div className="min-w-0 space-y-4">
+              <h2 className="text-lg font-semibold text-heading">Motoristas Ativos</h2>
+              <DataTable
+                columns={driverColumns}
+                rows={drivers}
+                ariaLabel="Motoristas ativos"
+                empty={{
+                  icon: UsersIcon,
+                  title: "Nenhum motorista ativo",
+                  hint: "Cadastre motoristas para distribuir vagas.",
+                }}
+              />
             </div>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-3">
-            {/* Assignments */}
-            <div className="lg:col-span-2 space-y-4">
-              <h3 className="text-sm font-semibold text-zinc-700">Atribuições</h3>
-              <div className="overflow-x-auto rounded-lg border bg-white">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-zinc-50 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
-                      <th className="px-4 py-3">Data</th>
-                      <th className="px-4 py-3">Categoria</th>
-                      <th className="px-4 py-3">Turno</th>
-                      <th className="px-4 py-3">Motorista</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {distribution.assignments.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="px-4 py-8 text-center text-sm text-zinc-400">
-                          Nenhuma vaga atribuída.
-                        </td>
-                      </tr>
-                    ) : (
-                      distribution.assignments.map((a, i) => (
-                        <tr key={i} className="hover:bg-zinc-50">
-                          <td className="px-4 py-3">
-                            {new Date(a.date).toLocaleDateString("pt-BR")}
-                          </td>
-                          <td className="px-4 py-3">
-                            <Badge variant="muted">{VEHICLE_LABELS[a.vehicleType]}</Badge>
-                          </td>
-                          <td className="px-4 py-3 text-zinc-700">{a.shiftBlock}</td>
-                          <td className="px-4 py-3">
-                            <span className="font-medium text-zinc-900">{a.name}</span>
+          {/* Distribution results */}
+          {distribution && (
+            <div className="space-y-4">
+              <h2 className="text-lg font-semibold text-heading">
+                Resultado da Distribuição
+              </h2>
+
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
+                <KpiCard
+                  label="Atribuídas"
+                  value={distribution.assignedCount}
+                  hint="vagas com motorista"
+                  tone="success"
+                />
+                <KpiCard
+                  label="Não atribuídas"
+                  value={distribution.unassignedCount}
+                  hint="sem motorista elegível"
+                />
+                <KpiCard
+                  label="Abaixo da cota"
+                  value={distribution.underQuotaCount}
+                  hint="motoristas com menos de 3 vagas"
+                  tone="warning"
+                />
+                <KpiCard
+                  label="CNH vencida"
+                  value={distribution.expiredCnhCount}
+                  hint="atribuídos com CNH fora da validade"
+                  tone="danger"
+                />
+              </div>
+
+              <div className="grid gap-6 lg:grid-cols-3">
+                {/* Assignments */}
+                <div className="min-w-0 lg:col-span-2 space-y-4">
+                  <h3 className="text-sm font-semibold text-foreground">Atribuições</h3>
+                  <DataTable
+                    ariaLabel="Atribuições"
+                    columns={[
+                      {
+                        header: "Data",
+                        sticky: true,
+                        cell: (a: RunDistributionResult["assignments"][number]) =>
+                          formatDate(a.date),
+                      },
+                      {
+                        header: "Categoria",
+                        cell: (a) => (
+                          <Badge variant="muted">{VEHICLE_LABELS[a.vehicleType]}</Badge>
+                        ),
+                      },
+                      { header: "Turno", cell: (a) => a.shiftBlock },
+                      {
+                        header: "Motorista",
+                        cell: (a) => (
+                          <span className="font-medium text-foreground">
+                            {a.name}
                             {a.cnhExpired && (
-                              <span className="ml-1 text-amber-600" title="CNH vencida">
+                              <span className="ml-1 text-warning-fg" aria-hidden>
                                 *
                               </span>
                             )}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                          </span>
+                        ),
+                      },
+                    ]}
+                    rows={distribution.assignments}
+                    empty={{ title: "Nenhuma vaga atribuída." }}
+                  />
+                  {distribution.assignments.some((a) => a.cnhExpired) && (
+                    <p className="text-xs text-muted-foreground">
+                      * CNH vencida — motorista atribuído com a CNH fora da
+                      validade. Regularize antes do início da semana.
+                    </p>
+                  )}
+                </div>
 
-            {/* Unassigned + under quota */}
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-sm font-semibold text-zinc-700">Vagas não atribuídas</h3>
-                <div className="mt-2 overflow-x-auto rounded-lg border bg-white">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b bg-zinc-50 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
-                        <th className="px-4 py-3">Data</th>
-                        <th className="px-4 py-3">Categoria</th>
-                        <th className="px-4 py-3">Qtd</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {distribution.unassignedVacancies.length === 0 ? (
-                        <tr>
-                          <td colSpan={3} className="px-4 py-6 text-center text-sm text-zinc-400">
-                            Nenhuma.
-                          </td>
-                        </tr>
-                      ) : (
-                        distribution.unassignedVacancies.map((v) => (
-                          <tr key={v.id} className="hover:bg-zinc-50">
-                            <td className="px-4 py-3">
-                              {new Date(v.date).toLocaleDateString("pt-BR")}
-                            </td>
-                            <td className="px-4 py-3">
+                {/* Unassigned + under quota */}
+                <div className="min-w-0 space-y-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">
+                      Vagas não atribuídas
+                    </h3>
+                    <div className="mt-2">
+                      <DataTable
+                        dense
+                        ariaLabel="Vagas não atribuídas"
+                        columns={[
+                          {
+                            header: "Data",
+                            sticky: true,
+                            cell: (v: RunDistributionResult["unassignedVacancies"][number]) =>
+                              formatDate(v.date),
+                          },
+                          {
+                            header: "Categoria",
+                            cell: (v) => (
                               <Badge variant="muted">{VEHICLE_LABELS[v.vehicleType]}</Badge>
-                            </td>
-                            <td className="px-4 py-3 text-zinc-700">{v.quantity}</td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+                            ),
+                          },
+                          {
+                            header: "Qtd",
+                            className: "text-right tabular-nums",
+                            cell: (v) => v.quantity,
+                          },
+                        ]}
+                        rows={distribution.unassignedVacancies}
+                        empty={{ title: "Nenhuma." }}
+                      />
+                    </div>
+                  </div>
 
-              <div>
-                <h3 className="text-sm font-semibold text-zinc-700">
-                  Motoristas abaixo da cota mínima (3)
-                </h3>
-                <div className="mt-2 overflow-x-auto rounded-lg border bg-white">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b bg-zinc-50 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
-                        <th className="px-4 py-3">Motorista</th>
-                        <th className="px-4 py-3">Atribuídas</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {distribution.underQuotaDrivers.length === 0 ? (
-                        <tr>
-                          <td colSpan={2} className="px-4 py-6 text-center text-sm text-zinc-400">
-                            Nenhum.
-                          </td>
-                        </tr>
-                      ) : (
-                        distribution.underQuotaDrivers.map((d) => (
-                          <tr key={d.driverProfileId} className="hover:bg-zinc-50">
-                            <td className="px-4 py-3 font-medium text-zinc-900">{d.name}</td>
-                            <td className="px-4 py-3 text-zinc-700">{d.assignedCount}</td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">
+                      Motoristas abaixo da cota mínima (3)
+                    </h3>
+                    <div className="mt-2">
+                      <DataTable
+                        dense
+                        ariaLabel="Motoristas abaixo da cota"
+                        columns={[
+                          {
+                            header: "Motorista",
+                            sticky: true,
+                            cell: (d: RunDistributionResult["underQuotaDrivers"][number]) => (
+                              <span className="font-medium text-foreground">{d.name}</span>
+                            ),
+                          },
+                          {
+                            header: "Atribuídas",
+                            className: "text-right tabular-nums",
+                            cell: (d) => d.assignedCount,
+                          },
+                        ]}
+                        rows={distribution.underQuotaDrivers}
+                        empty={{ title: "Nenhum." }}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+          )}
+        </>
       )}
 
       {/* Create/Edit Dialog */}
@@ -618,33 +632,22 @@ export function DispatchClient({ weeks, drivers, hasTransportCompany }: Props) {
       </Dialog>
 
       {/* Delete Confirmation */}
-      <Dialog
+      <ConfirmDialog
         open={confirmDelete !== null}
         onOpenChange={(open) => {
           if (!open) setConfirmDelete(null);
         }}
-      >
-        <DialogHeader>
-          <DialogTitle>Excluir Vaga</DialogTitle>
-          <DialogDescription>
-            Tem certeza que deseja excluir a vaga de{" "}
-            {confirmDelete && new Date(confirmDelete.date).toLocaleDateString("pt-BR")} —{" "}
-            {confirmDelete && VEHICLE_LABELS[confirmDelete.vehicleType]}?
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setConfirmDelete(null)}>
-            Cancelar
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={() => confirmDelete && handleDelete(confirmDelete)}
-            disabled={isPending}
-          >
-            {isPending ? "Excluindo..." : "Excluir"}
-          </Button>
-        </DialogFooter>
-      </Dialog>
+        title="Excluir Vaga"
+        description={
+          confirmDelete
+            ? `Tem certeza que deseja excluir a vaga de ${formatDate(confirmDelete.date)} — ${VEHICLE_LABELS[confirmDelete.vehicleType]}?`
+            : undefined
+        }
+        confirmLabel="Excluir"
+        tone="destructive"
+        pending={isPending}
+        onConfirm={() => confirmDelete && handleDelete(confirmDelete)}
+      />
     </div>
   );
 }

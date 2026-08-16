@@ -26,6 +26,10 @@ import {
   ShieldAlertIcon,
   XCircleIcon,
 } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
+import { DataTable, type DataTableColumn } from "@/components/data-table";
+import { StatusPill, type StatusPillTone } from "@/components/status-pill";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   markInfraction,
   approveInfraction,
@@ -70,11 +74,11 @@ interface Props {
   infractionTypes: InfractionTypeOption[];
 }
 
-const STATUS_BADGE: Record<string, "warning" | "default" | "success" | "muted" | "destructive"> = {
+const STATUS_TONE: Record<string, StatusPillTone> = {
   PENDING_APPROVAL: "warning",
-  ACTIVE: "default",
+  ACTIVE: "info",
   FULFILLED: "success",
-  CANCELLED: "muted",
+  CANCELLED: "neutral",
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -91,6 +95,9 @@ export function BehaviorClient({ drivers, weeks, infractionTypes }: Props) {
   const [type, setType] = useState<InfractionType | "">("");
   const [weekId, setWeekId] = useState("");
   const [observation, setObservation] = useState("");
+  const [confirmRejectId, setConfirmRejectId] = useState<string | null>(null);
+  // `null` = ainda carregando. A tabela NUNCA mostra o estado vazio enquanto
+  // `data` for null — este era o bug do falso vazio (P4).
   const [data, setData] = useState<{
     infractions: InfractionRow[];
     approvalQueue: InfractionRow[];
@@ -161,6 +168,7 @@ export function BehaviorClient({ drivers, weeks, infractionTypes }: Props) {
       const result = await rejectInfraction(id);
       if (result.success) toast.success("Infração rejeitada.");
       else toast.error(result.error ?? "Erro ao rejeitar.");
+      setConfirmRejectId(null);
       refresh();
     });
   }
@@ -175,30 +183,97 @@ export function BehaviorClient({ drivers, weeks, infractionTypes }: Props) {
   }
 
   const selectedType = infractionTypes.find((t) => t.type === type);
+  const loading = data === null;
+
+  const infractionColumns: DataTableColumn<InfractionRow>[] = [
+    {
+      header: "Motorista",
+      sticky: true,
+      cell: (i) => <span className="font-medium text-foreground">{i.driverName}</span>,
+    },
+    { header: "Infração", cell: (i) => i.typeLabel },
+    {
+      header: "Punição",
+      cell: (i) => (
+        <Badge variant={i.multiplier > 1 ? "destructive" : "default"}>
+          {i.punishment}
+          {i.multiplier > 1 && " (dobrada)"}
+        </Badge>
+      ),
+    },
+    { header: "Semana efetiva", cell: (i) => i.effectiveWeekKey },
+    {
+      header: "Status",
+      cell: (i) => (
+        <StatusPill tone={STATUS_TONE[i.status] ?? "neutral"}>
+          {STATUS_LABEL[i.status] ?? i.status}
+        </StatusPill>
+      ),
+    },
+    { header: "Marcado por", cell: (i) => i.markedByName ?? "—" },
+  ];
+
+  const approvalColumns: DataTableColumn<InfractionRow>[] = [
+    {
+      header: "Motorista",
+      sticky: true,
+      cell: (i) => (
+        <span>
+          <span className="font-medium text-foreground">{i.driverName}</span>
+          {i.observation && (
+            <span className="block text-xs text-muted-foreground">
+              “{i.observation}”
+            </span>
+          )}
+        </span>
+      ),
+    },
+    { header: "Infração", cell: (i) => i.typeLabel },
+    { header: "Marcado por", cell: (i) => i.markedByName ?? "—" },
+    {
+      header: "Ações",
+      className: "text-right",
+      cell: (i) => (
+        <span className="flex items-center justify-end gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setConfirmRejectId(i.id)}
+            disabled={isPending}
+            aria-label={`Rejeitar infração de ${i.driverName}`}
+          >
+            <XCircleIcon className="mr-1 size-3" /> Rejeitar
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => handleApprove(i.id)}
+            disabled={isPending}
+            aria-label={`Aprovar infração de ${i.driverName}`}
+          >
+            <CheckCircle2Icon className="mr-1 size-3" /> Aprovar
+          </Button>
+        </span>
+      ),
+    },
+  ];
 
   return (
     <div className="space-y-6 p-4 sm:p-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-900">
-            Comportamento do Motorista
-          </h1>
-          <p className="text-sm text-zinc-500">
-            Marque infrações, acompanhe punições e reincidências. A punição é
-            definida pelo tipo, nunca pelo supervisor.
-          </p>
-        </div>
-        <Button onClick={() => setMarkOpen(true)} disabled={isPending}>
-          <FlagIcon className="mr-2 size-4" />
-          Marcar Infração
-        </Button>
-      </div>
+      <PageHeader
+        title="Comportamento do Motorista"
+        description="Marque infrações, acompanhe punições e reincidências. A punição é definida pelo tipo, nunca pelo supervisor."
+        actions={
+          <Button onClick={() => setMarkOpen(true)} disabled={isPending}>
+            <FlagIcon className="mr-2 size-4" />
+            Marcar Infração
+          </Button>
+        }
+      />
 
       {/* Recidivism warnings */}
       {data && data.recidivismWarnings.length > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-          <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-800">
+        <div className="rounded-xl border border-warning-border bg-warning-bg p-4">
+          <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-warning-fg">
             <ShieldAlertIcon className="size-4" />
             Avisos de reincidência
           </h2>
@@ -206,18 +281,14 @@ export function BehaviorClient({ drivers, weeks, infractionTypes }: Props) {
             {data.recidivismWarnings.map((w) => (
               <li
                 key={w.id}
-                className="flex flex-col gap-1 rounded-md border border-amber-200 bg-white p-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+                className="flex flex-col gap-2 rounded-lg border border-warning-border bg-card p-3 text-sm sm:flex-row sm:items-center sm:justify-between"
               >
-                <div>
-                  <span className="font-medium text-zinc-900">{w.driverName}</span>
-                  <span className="text-zinc-500"> — {w.typeLabel}</span>
-                  <Badge variant="destructive" className="ml-2 text-[10px]">
-                    punição dobrada
-                  </Badge>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium text-foreground">{w.driverName}</span>
+                  <span className="text-muted-foreground">— {w.typeLabel}</span>
+                  <StatusPill tone="danger">punição dobrada</StatusPill>
                   {w.escalationDue && (
-                    <Badge variant="warning" className="ml-2 text-[10px]">
-                      escalonamento pendente
-                    </Badge>
+                    <StatusPill tone="warning">escalonamento pendente</StatusPill>
                   )}
                 </div>
                 {data.canApprove && w.escalationDue && !w.escalatedAt && (
@@ -238,89 +309,38 @@ export function BehaviorClient({ drivers, weeks, infractionTypes }: Props) {
 
       {/* Approval queue (account managers) */}
       {data?.canApprove && data.approvalQueue.length > 0 && (
-        <div className="rounded-lg border bg-white">
-          <div className="border-b px-4 py-3">
-            <h2 className="text-sm font-semibold text-zinc-900">
+        <div className="space-y-2">
+          <div>
+            <h2 className="text-lg font-semibold text-heading">
               Fila de aprovação (reclamação áspera)
             </h2>
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-muted-foreground">
               Apenas o tipo subjetivo exige aprovação do gerente de contas.
             </p>
           </div>
-          <ul className="divide-y">
-            {data.approvalQueue.map((i) => (
-              <li
-                key={i.id}
-                className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div>
-                  <span className="font-medium text-zinc-900">{i.driverName}</span>
-                  <span className="text-zinc-500"> — {i.typeLabel}</span>
-                  {i.observation && (
-                    <p className="text-xs text-zinc-400">“{i.observation}”</p>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleReject(i.id)}
-                    disabled={isPending}
-                  >
-                    <XCircleIcon className="mr-1 size-3" /> Rejeitar
-                  </Button>
-                  <Button size="sm" onClick={() => handleApprove(i.id)} disabled={isPending}>
-                    <CheckCircle2Icon className="mr-1 size-3" /> Aprovar
-                  </Button>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <DataTable
+            ariaLabel="Fila de aprovação"
+            columns={approvalColumns}
+            rows={data.approvalQueue}
+            empty={{ title: "Nenhuma infração aguardando aprovação." }}
+          />
         </div>
       )}
 
       {/* Punishment panel */}
-      <div className="overflow-x-auto rounded-lg border bg-white">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b bg-zinc-50 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
-              <th className="px-4 py-3">Motorista</th>
-              <th className="px-4 py-3">Infração</th>
-              <th className="px-4 py-3">Punição</th>
-              <th className="px-4 py-3">Semana efetiva</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Marcado por</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {(data?.infractions ?? []).map((i) => (
-              <tr key={i.id} className="hover:bg-zinc-50">
-                <td className="px-4 py-3 font-medium text-zinc-900">{i.driverName}</td>
-                <td className="px-4 py-3 text-zinc-600">{i.typeLabel}</td>
-                <td className="px-4 py-3">
-                  <Badge variant={i.multiplier > 1 ? "destructive" : "default"}>
-                    {i.punishment}
-                    {i.multiplier > 1 && " (dobrada)"}
-                  </Badge>
-                </td>
-                <td className="px-4 py-3 text-zinc-600">{i.effectiveWeekKey}</td>
-                <td className="px-4 py-3">
-                  <Badge variant={STATUS_BADGE[i.status] ?? "muted"}>
-                    {STATUS_LABEL[i.status] ?? i.status}
-                  </Badge>
-                </td>
-                <td className="px-4 py-3 text-zinc-500">{i.markedByName ?? "—"}</td>
-              </tr>
-            ))}
-            {(data?.infractions ?? []).length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-sm text-zinc-400">
-                  Nenhuma infração registrada.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+      <div className="space-y-2">
+        <h2 className="text-lg font-semibold text-heading">Ciclo de punição</h2>
+        <DataTable
+          ariaLabel="Ciclo de punição"
+          columns={infractionColumns}
+          rows={data?.infractions ?? []}
+          loading={loading}
+          empty={{
+            icon: FlagIcon,
+            title: "Nenhuma infração registrada",
+            hint: "Quando uma infração for marcada, ela aparece aqui com a punição e o status.",
+          }}
+        />
       </div>
 
       {/* Mark infraction dialog */}
@@ -366,7 +386,7 @@ export function BehaviorClient({ drivers, weeks, infractionTypes }: Props) {
               </SelectContent>
             </Select>
             {selectedType?.requiresApproval && (
-              <p className="flex items-center gap-1 text-xs text-amber-600">
+              <p className="flex items-center gap-1 text-xs text-warning-fg">
                 <AlertTriangleIcon className="size-3" />
                 Tipo subjetivo: exige aprovação do gerente de contas.
               </p>
@@ -410,6 +430,20 @@ export function BehaviorClient({ drivers, weeks, infractionTypes }: Props) {
           </Button>
         </DialogFooter>
       </Dialog>
+
+      {/* Reject confirmation */}
+      <ConfirmDialog
+        open={confirmRejectId !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmRejectId(null);
+        }}
+        title="Rejeitar Infração"
+        description="A infração será cancelada e não gera punição. Esta ação não pode ser desfeita."
+        confirmLabel="Rejeitar"
+        tone="destructive"
+        pending={isPending}
+        onConfirm={() => confirmRejectId && handleReject(confirmRejectId)}
+      />
     </div>
   );
 }

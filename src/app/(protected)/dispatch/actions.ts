@@ -14,8 +14,6 @@ import {
 import { addWeeks, selectInfractionsToEscalate } from "@/lib/behavior";
 import type { UserRole, VehicleType } from "@/generated/prisma";
 
-const VEHICLE_TYPES: VehicleType[] = ["CARGO_VAN", "LARGE_VAN", "PASSEIO"];
-
 async function requireSupervisorPlus() {
   const session = await auth();
   if (!session?.user?.id) {
@@ -596,5 +594,4 @@ export async function runDistribution(
   };
 }
 
-export { VEHICLE_TYPES };
 export type { VehicleType };
