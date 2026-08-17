@@ -23,6 +23,7 @@ export function EmptyState({
 }) {
   return (
     <div
+      data-slot="empty-state"
       className={cn(
         "flex flex-col items-center gap-2 px-6 py-12 text-center",
         className,

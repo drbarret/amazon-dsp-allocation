@@ -49,6 +49,8 @@ export function DataTable<T>({
   ariaLabel?: string;
   className?: string;
 }) {
+  const isEmpty = !loading && rows.length === 0;
+
   return (
     <div
       className={cn(
@@ -95,17 +97,6 @@ export function DataTable<T>({
                 ))}
               </tr>
             ))
-          ) : rows.length === 0 ? (
-            <tr>
-              <td colSpan={columns.length} className="p-0">
-                <EmptyState
-                  icon={empty.icon}
-                  title={empty.title}
-                  hint={empty.hint}
-                  action={empty.action}
-                />
-              </td>
-            </tr>
           ) : (
             rows.map((row, rowIdx) => (
               <tr
@@ -130,6 +121,21 @@ export function DataTable<T>({
           )}
         </tbody>
       </table>
+      {/*
+        Empty state renders OUTSIDE the <table> (but inside the card): inside
+        a <td colSpan> it inherited the table's scrollable width — headers
+        are whitespace-nowrap — and its text was clipped at the viewport edge
+        on narrow screens (audited: "seman", "aqu" cut off at 390px). As a
+        plain block sibling it lays out at the card's visible width.
+      */}
+      {isEmpty ? (
+        <EmptyState
+          icon={empty.icon}
+          title={empty.title}
+          hint={empty.hint}
+          action={empty.action}
+        />
+      ) : null}
     </div>
   );
 }

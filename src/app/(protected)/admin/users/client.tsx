@@ -332,10 +332,16 @@ export function UserManagementClient({ users, currentUserId, roleLabels }: Props
           >
             <SelectTrigger
               size="sm"
-              className="w-36"
+              className="w-44"
               aria-label={`Papel de ${user.name}`}
             >
-              <SelectValue />
+              {/* Show the human label, never the raw enum value; the value
+                  sent to the server is unchanged (still user.role). */}
+              <SelectValue>
+                {(value: UserRole) =>
+                  ROLE_OPTIONS.find((o) => o.value === value)?.label ?? value
+                }
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {ROLE_OPTIONS.map((opt) => (
@@ -394,8 +400,11 @@ export function UserManagementClient({ users, currentUserId, roleLabels }: Props
       },
     },
     {
+      // Least-actionable column: hidden below 2xl so the table fits the
+      // viewport at 1440 (audited sweep found the last columns ending ~59px
+      // past the viewport edge). Still visible on very wide screens.
       header: "Último acesso",
-      className: "whitespace-nowrap tabular-nums",
+      className: "whitespace-nowrap tabular-nums hidden 2xl:table-cell",
       cell: (user) =>
         user.lastLoginAt ? (
           <span className="text-xs text-muted-foreground">

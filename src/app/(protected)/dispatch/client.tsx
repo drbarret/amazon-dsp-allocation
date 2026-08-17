@@ -281,18 +281,20 @@ export function DispatchClient({ weeks, drivers, hasTransportCompany }: Props) {
     {
       header: "Motorista",
       sticky: true,
+      className: "min-w-0",
       cell: (d) => (
-        <span className="flex items-center gap-1.5">
-          <UsersIcon className="size-3.5 text-muted-foreground" />
-          <span>
-            <span className="block font-medium text-foreground">{d.name}</span>
-            <span className="block text-xs text-muted-foreground">{d.email}</span>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <UsersIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="min-w-0">
+            <span className="block truncate font-medium text-foreground">{d.name}</span>
+            <span className="block truncate text-xs text-muted-foreground">{d.email}</span>
           </span>
         </span>
       ),
     },
     {
       header: "Veículo",
+      className: "whitespace-nowrap",
       cell: (d) =>
         d.driverProfile ? (
           <span className="flex flex-col gap-0.5">
@@ -405,10 +407,15 @@ export function DispatchClient({ weeks, drivers, hasTransportCompany }: Props) {
             {/* Drivers */}
             <div className="min-w-0 space-y-4">
               <h2 className="text-lg font-semibold text-heading">Motoristas Ativos</h2>
+              {/* table-fixed: the card is ~224px wide at 1024px; fixed layout
+                  lets the truncatable "Motorista" column shrink to the
+                  available space instead of pushing "Veículo" past the
+                  viewport (audited defect: column ended at x=1030 @1024). */}
               <DataTable
                 columns={driverColumns}
                 rows={drivers}
                 ariaLabel="Motoristas ativos"
+                className="[&_table]:table-fixed"
                 empty={{
                   icon: UsersIcon,
                   title: "Nenhum motorista ativo",
