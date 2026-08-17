@@ -13,7 +13,7 @@ export async function jwtCallback({ token, user, account }: {
   }
 
   // On first sign-in, read role from DB and apply pre-registered role if needed
-  if (account?.provider === "amazon" && token.email) {
+  if (account?.provider && token.email) {
     const dbUser = await prisma.user.findUnique({
       where: { email: token.email as string },
       select: { role: true, amazonSub: true, active: true },

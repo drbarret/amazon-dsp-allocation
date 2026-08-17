@@ -163,6 +163,58 @@ atualizada"**. O e-mail é enviado apenas para os selecionados, usando
 Nunca envie e-mails reais para motoristas em desenvolvimento — use
 `EMAIL_TO_OVERRIDE` ou mocks nos testes.
 
+## Login administrativo por magic link (Resend)
+
+Além do **Login with Amazon** para motoristas e supervisores, administradores,
+gerentes de contas e supervisores com e-mail `@instalog.com.br` podem acessar o
+sistema por **magic link enviado por e-mail**. O fluxo usa o provider
+[Resend](https://resend.com) do Auth.js.
+
+### Por que existe
+
+- Equipe interna da ILLT/Instalog não tem conta Amazon corporativa vinculada ao
+  sistema de escala.
+- O magic link mantém a **lista fechada de e-mails autorizados** (`allowed_emails`)
+  como única fonte de verdade para acesso administrativo.
+
+### Variáveis de ambiente
+
+| Variável | Obrigatória | Descrição |
+|----------|-------------|-----------|
+| `AUTH_RESEND_KEY` | Sim* | Chave da API do Resend usada **exclusivamente** para envio dos links mágicos de login. |
+| `AUTH_RESEND_FROM` | Sim* | Remetente autorizado no domínio do Resend. Padrão: `TRC Brasil <trc-brasil@instalog.com.br>`. |
+
+\* Obrigatória apenas para habilitar o login por magic link. O Login with Amazon
+continua funcionando independentemente.
+
+> **Separação de responsabilidades:** `AUTH_RESEND_KEY`/`AUTH_RESEND_FROM` são
+> dedicadas à autenticação. As variáveis `RESEND_API_KEY`/`EMAIL_FROM` continuam
+> sendo usadas apenas para e-mails de negócio (cobrança de CNH). Recomendamos
+> manter chaves separadas para facilitar rotação e auditoria.
+
+> **Domínio do remetente:** o domínio `instalog.com.br` precisa estar
+> **verificado na conta do Resend** para que os e-mails de login sejam entregues.
+
+### Como liberar um administrador
+
+1. Cadastre o e-mail corporativo na tabela `allowed_emails` (ou via admin do
+   sistema) com o papel correto (`SUPERVISOR`, `ACCOUNT_MANAGER` ou `ADMIN`) e
+   status `ACTIVE`.
+2. O usuário acessa `/login`, seleciona a aba **E-mail**, digita o e-mail
+   corporativo e clica em **Receber link de acesso**.
+3. O Auth.js envia um e-mail com link único e de curta duração. Após clicar no
+   link, o usuário é autenticado e a role é promovida automaticamente de
+   `DRIVER` (padrão do novo usuário) para a role definida em `allowed_emails`.
+
+### Segurança
+
+- Apenas e-mails presentes em `allowed_emails` com status `ACTIVE` conseguem
+  logar. Qualquer outro endereço é redirecionado para `/auth-error?error=unauthorized`.
+- E-mails `REVOKED` não conseguem logar nem por Amazon nem por magic link.
+- O magic link é de **uso único** e expira conforme configuração padrão do
+  Auth.js (não armazenamos tokens manualmente).
+- Nunca compartilhe `AUTH_RESEND_KEY` nem a configure em arquivos versionados.
+
 ## Licença
 
 Privado — Uso interno ILLT / Instalog.

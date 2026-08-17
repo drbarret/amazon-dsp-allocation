@@ -14,23 +14,24 @@ import { writeAuditLog } from "@/lib/audit";
  */
 export async function signInDecision(params: {
   email: string;
+  provider?: string;
   providerAccountId: string;
 }): Promise<
   | { allowed: true }
   | { allowed: false; reason: string }
 > {
-  const { email, providerAccountId } = params;
+  const { email, provider = "amazon", providerAccountId } = params;
 
   const existingUser = await prisma.user.findUnique({
     where: { email },
   });
 
   if (existingUser) {
-    // Update amazon sub and last login
+    // Update provider id and last login
     await prisma.user.update({
       where: { id: existingUser.id },
       data: {
-        amazonSub: providerAccountId,
+        ...(provider === "amazon" && { amazonSub: providerAccountId }),
         lastLoginAt: new Date(),
       },
     });

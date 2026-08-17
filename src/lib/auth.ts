@@ -1,5 +1,6 @@
 import NextAuth from "next-auth";
 import { PrismaAdapter } from "@auth/prisma-adapter";
+import Resend from "@auth/core/providers/resend";
 import { prisma } from "@/lib/prisma";
 import { signInDecision } from "@/lib/sign-in-decision";
 import { jwtCallback } from "@/lib/jwt-callback";
@@ -31,25 +32,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       clientId: process.env.AUTH_AMAZON_ID,
       clientSecret: process.env.AUTH_AMAZON_SECRET,
     },
+    Resend({
+      apiKey: process.env.AUTH_RESEND_KEY,
+      from: process.env.AUTH_RESEND_FROM,
+    }),
   ],
   callbacks: {
     async signIn({ user, account }) {
-      if (!user.email) return false;
+      if (!user.email || !account) return false;
 
-      if (account?.provider === "amazon") {
-        const decision = await signInDecision({
-          email: user.email,
-          providerAccountId: account.providerAccountId,
-        });
+      const decision = await signInDecision({
+        email: user.email,
+        provider: account.provider,
+        providerAccountId: account.providerAccountId,
+      });
 
-        if (!decision.allowed) {
-          if (decision.reason === "user_deactivated") {
-            return "/auth-error?error=deactivated";
-          }
-          return "/auth-error?error=unauthorized";
+      if (!decision.allowed) {
+        if (decision.reason === "user_deactivated") {
+          return "/auth-error?error=deactivated";
         }
-
-        return true;
+        return "/auth-error?error=unauthorized";
       }
 
       return true;

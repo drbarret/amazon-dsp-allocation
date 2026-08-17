@@ -183,15 +183,15 @@ describe("1b: jwt callback role freshness", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Finding 2: First-sign-in role promotion path (account?.provider === "amazon")
+// Finding 2: First-sign-in role promotion path (any provider)
 //
 // Tests the branch at jwt-callback.ts:16-43 that reads the user from DB
 // and promotes DRIVER → SUPERVISOR / ACCOUNT_MANAGER / ADMIN based on
 // AllowedEmail. This is the code that fixes the "corporate-domain users
-// always land as DRIVER" bug.
+// always land as DRIVER" bug for both Amazon and Resend magic links.
 // ---------------------------------------------------------------------------
 
-describe("First-sign-in role promotion (account.provider === 'amazon')", () => {
+describe("First-sign-in role promotion (any provider)", () => {
   const baseToken = {
     email: "test@instalog.com.br",
     name: "Test User",
@@ -376,6 +376,56 @@ describe("First-sign-in role promotion (account.provider === 'amazon')", () => {
   });
 
   // -----------------------------------------------------------------------
+  // Resend provider: DRIVER → ACCOUNT_MANAGER promotion
+  // -----------------------------------------------------------------------
+  it("promotes DRIVER to ACCOUNT_MANAGER when logging in via Resend", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({
+      role: "DRIVER",
+      amazonSub: null,
+      active: true,
+    });
+    mockPrisma.allowedEmail.findUnique.mockResolvedValue({
+      role: "ACCOUNT_MANAGER",
+      status: "ACTIVE",
+    });
+    mockPrisma.user.update.mockResolvedValue({});
+
+    const result = await jwtCallback({
+      token: { ...baseToken },
+      account: { provider: "resend" },
+    });
+
+    expect(mockPrisma.user.update).toHaveBeenCalledWith({
+      where: { email: "test@instalog.com.br" },
+      data: { role: "ACCOUNT_MANAGER" },
+    });
+    expect(result.role).toBe("ACCOUNT_MANAGER");
+    expect(result.amazonSub).toBeNull();
+    expect(result.active).toBe(true);
+  });
+
+  // -----------------------------------------------------------------------
+  // No rebaixamento: usuário existente com role maior mantém a role
+  // -----------------------------------------------------------------------
+  it("does NOT demote an existing ADMIN when AllowedEmail is ACCOUNT_MANAGER", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({
+      role: "ADMIN",
+      amazonSub: "amzn-admin",
+      active: true,
+    });
+
+    const result = await jwtCallback({
+      token: { ...baseToken },
+      account: { provider: "resend" },
+    });
+
+    // Admin stays admin — no lookup, no update
+    expect(mockPrisma.allowedEmail.findUnique).not.toHaveBeenCalled();
+    expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    expect(result.role).toBe("ADMIN");
+  });
+
+  // -----------------------------------------------------------------------
   // Missing user row: no dbUser → freshness check runs, fail-closed
   // -----------------------------------------------------------------------
   it("sets active=false when user row is missing on first sign-in (freshness check fail-closed)", async () => {
@@ -396,27 +446,25 @@ describe("First-sign-in role promotion (account.provider === 'amazon')", () => {
   });
 
   // -----------------------------------------------------------------------
-  // Non-amazon provider: skips the first-sign-in branch, but freshness check still runs
+  // Resend provider: skips promotion when AllowedEmail is REVOKED
   // -----------------------------------------------------------------------
-  it("skips first-sign-in branch for non-amazon providers (freshness check still runs)", async () => {
+  it("does NOT promote DRIVER via Resend when AllowedEmail is REVOKED", async () => {
     mockPrisma.user.findUnique.mockResolvedValue({
       role: "DRIVER",
+      amazonSub: null,
       active: true,
+    });
+    mockPrisma.allowedEmail.findUnique.mockResolvedValue({
+      role: "ACCOUNT_MANAGER",
+      status: "REVOKED",
     });
 
     const result = await jwtCallback({
       token: { ...baseToken },
-      account: { provider: "google" },
+      account: { provider: "resend" },
     });
 
-    // First-sign-in branch skipped (provider !== "amazon")
-    expect(mockPrisma.allowedEmail.findUnique).not.toHaveBeenCalled();
-    // Freshness check runs independently: roleLastFetched=0, now-0 > 15s → queries DB
-    expect(mockPrisma.user.findUnique).toHaveBeenCalledWith({
-      where: { email: "test@instalog.com.br" },
-      select: { role: true, active: true },
-    });
+    expect(mockPrisma.user.update).not.toHaveBeenCalled();
     expect(result.role).toBe("DRIVER");
-    expect(result.active).toBe(true);
   });
 });

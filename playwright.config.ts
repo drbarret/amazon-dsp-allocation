@@ -1,14 +1,14 @@
 import { defineConfig } from "playwright/test";
 
 /**
- * Minimal Playwright config for layout-geometry regression tests.
+ * Playwright config for E2E tests.
  *
- * These tests measure REAL rendered geometry (getBoundingClientRect,
- * scrollWidth) in a real browser — jsdom cannot compute layout, so this
- * cannot be a vitest/jsdom test. They require:
- *   - a reachable Postgres (DATABASE_URL) to create a disposable user
+ * These tests run against a real browser and a real Next.js dev server. They
+ * require:
+ *   - a reachable Postgres (DATABASE_URL) to create disposable users
  *   - AUTH_SECRET to forge an Auth.js session cookie
- *   - a running app (the webServer block below starts `next dev` on :3100)
+ *   - AUTH_URL set to the local dev server URL so Auth.js redirects stay on
+ *     the same origin during tests (see webServer.env below).
  *
  * Deliberate opt-out (CI without a database): set SKIP_E2E_TESTS=1 and the
  * specs skip explicitly instead of silently passing.
@@ -28,5 +28,10 @@ export default defineConfig({
     url: "http://localhost:3100/login",
     reuseExistingServer: true,
     timeout: 120_000,
+    env: {
+      // Keep Auth.js redirects on the local E2E origin. Without this, the
+      // signIn callback redirect URL would use the production AUTH_URL.
+      AUTH_URL: "http://localhost:3100",
+    },
   },
 });
