@@ -354,4 +354,95 @@ describe.skipIf(SKIP_INTEGRATION)("importAvailability integration", () => {
       expect(result.error).toMatch(/não está aguardando aprovação/);
     });
   });
+
+  describe("admin without transport company", () => {
+    it("requires transportCompanyId when admin has no own company", async () => {
+      await prisma.user.update({
+        where: { id: supervisorId },
+        data: { transportCompanyId: null },
+      });
+      mockAuth.mockResolvedValue({
+        user: { id: supervisorId, role: "ADMIN", active: true, transportCompanyId: null },
+      } as never);
+
+      const file = buildXlsx([HEADERS, dataRow()]);
+      const result = await importAvailability(buildFormData(`W${runId}`, file));
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/Selecione uma transportadora/);
+
+      await prisma.user.update({
+        where: { id: supervisorId },
+        data: { transportCompanyId },
+      });
+    });
+
+    it("imports using requested transportCompanyId", async () => {
+      await prisma.user.update({
+        where: { id: supervisorId },
+        data: { transportCompanyId: null },
+      });
+      mockAuth.mockResolvedValue({
+        user: { id: supervisorId, role: "ADMIN", active: true, transportCompanyId: null },
+      } as never);
+
+      const formData = buildFormData(`W${runId}`, buildXlsx([HEADERS, dataRow()]));
+      formData.append("transportCompanyId", transportCompanyId);
+
+      const result = await importAvailability(formData);
+      expect(result.success).toBe(true);
+      expect(result.imported).toBe(1);
+
+      await prisma.user.update({
+        where: { id: supervisorId },
+        data: { transportCompanyId },
+      });
+    });
+
+    it("lists using requested transportCompanyId", async () => {
+      await prisma.user.update({
+        where: { id: supervisorId },
+        data: { transportCompanyId: null },
+      });
+      mockAuth.mockResolvedValue({
+        user: { id: supervisorId, role: "ADMIN", active: true, transportCompanyId: null },
+      } as never);
+
+      const result = await listAvailabilities(weekId, transportCompanyId);
+      expect(result.success).toBe(true);
+      expect(result.rows.length).toBeGreaterThan(0);
+
+      await prisma.user.update({
+        where: { id: supervisorId },
+        data: { transportCompanyId },
+      });
+    });
+
+    it("approves using requested transportCompanyId", async () => {
+      await prisma.user.update({
+        where: { id: supervisorId },
+        data: { transportCompanyId: null },
+      });
+      mockAuth.mockResolvedValue({
+        user: { id: supervisorId, role: "ADMIN", active: true, transportCompanyId: null },
+      } as never);
+
+      const availability = await prisma.driverAvailability.findFirst({
+        where: { dispatchWeekId: weekId, userId: inactiveDriverId },
+      });
+      expect(availability).not.toBeNull();
+
+      await prisma.availabilityApproval.update({
+        where: { driverAvailabilityId: availability!.id },
+        data: { status: "PENDING" },
+      });
+
+      const result = await approveAvailability(availability!.id, "Ok", transportCompanyId);
+      expect(result.success).toBe(true);
+
+      await prisma.user.update({
+        where: { id: supervisorId },
+        data: { transportCompanyId },
+      });
+    });
+  });
 });

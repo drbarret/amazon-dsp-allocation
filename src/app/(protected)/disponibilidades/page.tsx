@@ -1,6 +1,7 @@
 import { requireRole } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import { DisponibilidadesClient } from "./client";
+import type { UserRole } from "@/generated/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -14,23 +15,42 @@ function defaultWeekId(weeks: { id: string; startDate: Date; endDate: Date }[]):
   return next?.id ?? weeks[0]?.id ?? "";
 }
 
+const MANAGEMENT_ROLES: UserRole[] = ["ADMIN", "ACCOUNT_MANAGER"];
+
 export default async function DisponibilidadesPage() {
   const session = await requireRole("SUPERVISOR");
   const actorId = session.user.id;
+  const role = (session.user.role as UserRole) ?? "DRIVER";
+  const canManageAllCompanies = MANAGEMENT_ROLES.includes(role);
 
   const user = await prisma.user.findUnique({
     where: { id: actorId },
     select: { transportCompanyId: true },
   });
 
-  const transportCompanyId = user?.transportCompanyId ?? null;
+  const ownTransportCompanyId = user?.transportCompanyId ?? null;
+  const hasTransportCompany = ownTransportCompanyId !== null;
 
-  const weeks = transportCompanyId
-    ? await prisma.dispatchWeek.findMany({
-        where: { transportCompanyId },
-        orderBy: [{ year: "desc" }, { weekNumber: "desc" }],
-      })
-    : [];
+  const effectiveTransportCompanyId = ownTransportCompanyId ?? undefined;
+  const shouldLoadAllCompanies = !hasTransportCompany && canManageAllCompanies;
+
+  const [companies, weeks] = await Promise.all([
+    shouldLoadAllCompanies
+      ? prisma.transportCompany.findMany({
+          where: { active: true },
+          select: { id: true, name: true },
+          orderBy: { name: "asc" },
+        })
+      : Promise.resolve([]),
+    effectiveTransportCompanyId
+      ? prisma.dispatchWeek.findMany({
+          where: { transportCompanyId: effectiveTransportCompanyId },
+          orderBy: [{ year: "desc" }, { weekNumber: "desc" }],
+        })
+      : prisma.dispatchWeek.findMany({
+          orderBy: [{ year: "desc" }, { weekNumber: "desc" }],
+        }),
+  ]);
 
   return (
     <DisponibilidadesClient
@@ -39,9 +59,12 @@ export default async function DisponibilidadesPage() {
         weekKey: w.weekKey,
         startDate: formatDate(w.startDate),
         endDate: formatDate(w.endDate),
+        transportCompanyId: w.transportCompanyId,
       }))}
       initialWeekId={defaultWeekId(weeks)}
-      hasTransportCompany={transportCompanyId !== null}
+      hasTransportCompany={hasTransportCompany}
+      companies={companies.map((c) => ({ id: c.id, name: c.name }))}
+      userRole={role}
     />
   );
 }

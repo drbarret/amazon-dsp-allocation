@@ -22,6 +22,7 @@ import {
   CheckIcon,
   XIcon,
   Loader2Icon,
+  Building2Icon,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { ActionBar } from "@/components/action-bar";
@@ -37,21 +38,32 @@ import {
   type AvailabilityRow,
   type ImportAvailabilityResult,
 } from "./actions";
+import type { UserRole } from "@/generated/prisma";
 
 interface WeekOption {
   id: string;
   weekKey: string;
   startDate: string;
   endDate: string;
+  transportCompanyId: string;
+}
+
+interface CompanyOption {
+  id: string;
+  name: string;
 }
 
 interface Props {
   weeks: WeekOption[];
   initialWeekId: string;
   hasTransportCompany: boolean;
+  companies: CompanyOption[];
+  userRole: UserRole;
 }
 
 const DAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+const MANAGEMENT_ROLES: UserRole[] = ["ADMIN", "ACCOUNT_MANAGER"];
 
 function DayCell({ value }: { value: boolean }) {
   return value ? (
@@ -69,8 +81,42 @@ export function DisponibilidadesClient({
   weeks,
   initialWeekId,
   hasTransportCompany,
+  companies,
+  userRole,
 }: Props) {
-  const [selectedWeekId, setSelectedWeekId] = useState<string>(initialWeekId);
+  const canSelectCompany = !hasTransportCompany && MANAGEMENT_ROLES.includes(userRole);
+  const [selectedCompanyId, setSelectedCompanyIdState] = useState<string | "">(
+    canSelectCompany ? companies[0]?.id ?? "" : ""
+  );
+
+  const filteredWeeks = useMemo(() => {
+    if (!canSelectCompany || !selectedCompanyId) return weeks;
+    return weeks.filter((w) => w.transportCompanyId === selectedCompanyId);
+  }, [weeks, canSelectCompany, selectedCompanyId]);
+
+  const [selectedWeekId, setSelectedWeekId] = useState<string>(() => {
+    if (canSelectCompany) {
+      const companyWeeks = companies[0]?.id
+        ? weeks.filter((w) => w.transportCompanyId === companies[0].id)
+        : weeks;
+      return companyWeeks[0]?.id ?? "";
+    }
+    return initialWeekId;
+  });
+
+  const setSelectedCompanyId = (companyId: string) => {
+    setSelectedCompanyIdState(companyId);
+    const companyWeeks = companyId
+      ? weeks.filter((w) => w.transportCompanyId === companyId)
+      : weeks;
+    setSelectedWeekId(companyWeeks[0]?.id ?? "");
+  };
+
+  const effectiveTransportCompanyId = useMemo(() => {
+    if (hasTransportCompany) return undefined;
+    return selectedCompanyId || undefined;
+  }, [hasTransportCompany, selectedCompanyId]);
+
   const [rows, setRows] = useState<AvailabilityRow[]>([]);
   const [loadingRows, setLoadingRows] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -83,12 +129,13 @@ export function DisponibilidadesClient({
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
 
   const selectedWeek = useMemo(
-    () => weeks.find((w) => w.id === selectedWeekId) ?? null,
-    [weeks, selectedWeekId],
+    () => filteredWeeks.find((w) => w.id === selectedWeekId) ?? null,
+    [filteredWeeks, selectedWeekId]
   );
 
   useEffect(() => {
     loadRows(selectedWeekId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedWeekId]);
 
   function loadRows(weekId: string) {
@@ -99,7 +146,7 @@ export function DisponibilidadesClient({
     setLoadingRows(true);
     startTransition(async () => {
       try {
-        const result = await listAvailabilities(weekId);
+        const result = await listAvailabilities(weekId, effectiveTransportCompanyId);
         if (result.success) {
           setRows(result.rows);
         } else {
@@ -134,12 +181,19 @@ export function DisponibilidadesClient({
       toast.error("Selecione uma semana e um arquivo.");
       return;
     }
+    if (!hasTransportCompany && !selectedCompanyId) {
+      toast.error("Selecione uma transportadora.");
+      return;
+    }
     setIsImporting(true);
     startTransition(async () => {
       try {
         const formData = new FormData();
         formData.append("week", selectedWeek?.weekKey ?? selectedWeekId);
         formData.append("file", file);
+        if (effectiveTransportCompanyId) {
+          formData.append("transportCompanyId", effectiveTransportCompanyId);
+        }
         const result = await importAvailability(formData);
         setLastResult(result);
         if (result.success) {
@@ -166,7 +220,7 @@ export function DisponibilidadesClient({
   function handleApprove(id: string) {
     startTransition(async () => {
       try {
-        const result = await approveAvailability(id, reviewNotes[id]);
+        const result = await approveAvailability(id, reviewNotes[id], effectiveTransportCompanyId);
         if (result.success) {
           toast.success("Motorista aprovado.");
           loadRows(selectedWeekId);
@@ -182,7 +236,7 @@ export function DisponibilidadesClient({
   function handleReject(id: string) {
     startTransition(async () => {
       try {
-        const result = await rejectAvailability(id, reviewNotes[id]);
+        const result = await rejectAvailability(id, reviewNotes[id], effectiveTransportCompanyId);
         if (result.success) {
           toast.success("Motorista rejeitado.");
           loadRows(selectedWeekId);
@@ -266,7 +320,7 @@ export function DisponibilidadesClient({
 
   const pendingRows = rows.filter((r) => r.approval?.status === "PENDING");
 
-  if (!hasTransportCompany) {
+  if (!hasTransportCompany && !canSelectCompany) {
     return (
       <div className="space-y-6 p-4 sm:p-6">
         <PageHeader title="Disponibilidades" />
@@ -279,17 +333,24 @@ export function DisponibilidadesClient({
     );
   }
 
-  if (weeks.length === 0) {
+  if (filteredWeeks.length === 0) {
     return (
       <div className="space-y-6 p-4 sm:p-6">
         <PageHeader
           title="Disponibilidades"
           description="Importar e gerenciar disponibilidades dos motoristas."
         />
+        {canSelectCompany && companies.length > 0 && (
+          <CompanySelector
+            companies={companies}
+            value={selectedCompanyId}
+            onChange={setSelectedCompanyId}
+          />
+        )}
         <EmptyState
           icon={CalendarOffIcon}
           title="Nenhuma semana cadastrada"
-          hint="Ainda não existe nenhuma semana cadastrada para a sua transportadora."
+          hint="Ainda não existe nenhuma semana cadastrada para a transportadora selecionada."
         />
       </div>
     );
@@ -301,12 +362,21 @@ export function DisponibilidadesClient({
         title="Disponibilidades"
         description="Importar e gerenciar disponibilidades dos motoristas."
         actions={
-          <WeekSelector
-            weeks={weeks}
-            value={selectedWeekId}
-            onChange={setSelectedWeekId}
-            disabled={isPending || isImporting}
-          />
+          <div className="flex flex-col items-end gap-3 sm:flex-row sm:items-center">
+            {canSelectCompany && (
+              <CompanySelector
+                companies={companies}
+                value={selectedCompanyId}
+                onChange={setSelectedCompanyId}
+              />
+            )}
+            <WeekSelector
+              weeks={filteredWeeks}
+              value={selectedWeekId}
+              onChange={setSelectedWeekId}
+              disabled={isPending || isImporting}
+            />
+          </div>
         }
       />
 
@@ -465,7 +535,7 @@ export function DisponibilidadesClient({
         <DialogHeader>
           <DialogTitle>Importar disponibilidades</DialogTitle>
           <DialogDescription>
-            Selecione o arquivo .xlsx preenchido para a semana {" "}
+            Selecione o arquivo .xlsx preenchido para a semana{" "}
             <strong>{selectedWeek?.weekKey}</strong>.
           </DialogDescription>
         </DialogHeader>
@@ -504,6 +574,43 @@ export function DisponibilidadesClient({
           </Button>
         </DialogFooter>
       </Dialog>
+    </div>
+  );
+}
+
+function CompanySelector({
+  companies,
+  value,
+  onChange,
+}: {
+  companies: CompanyOption[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  if (companies.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">Nenhuma transportadora cadastrada</p>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <Building2Icon className="size-4 text-muted-foreground" />
+      <label htmlFor="company-selector" className="text-sm font-medium text-foreground">
+        Transportadora
+      </label>
+      <select
+        id="company-selector"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-9 min-w-32 flex-1 rounded-lg border border-border bg-card px-3 py-1 text-sm text-foreground shadow-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 sm:flex-none"
+      >
+        {companies.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

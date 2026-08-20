@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/lib/audit";
 import { parseXlsxAvailability, type AvailabilityError } from "@/lib/availability/xlsx-parser";
 import { revalidatePath } from "next/cache";
+import type { UserRole } from "@/generated/prisma";
 
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 
@@ -30,12 +31,45 @@ function toWeekKey(week: string): string {
   return `WK-${normalized}`;
 }
 
-async function getActorTransportCompanyId(userId: string): Promise<string | null> {
+const MANAGEMENT_ROLES: UserRole[] = ["ADMIN", "ACCOUNT_MANAGER"];
+
+async function resolveTransportCompanyId(
+  actorId: string,
+  actorRole: UserRole,
+  requestedTransportCompanyId?: string | null
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const user = await prisma.user.findUnique({
-    where: { id: userId },
+    where: { id: actorId },
     select: { transportCompanyId: true },
   });
-  return user?.transportCompanyId ?? null;
+
+  const ownTransportCompanyId = user?.transportCompanyId ?? null;
+
+  if (ownTransportCompanyId) {
+    if (requestedTransportCompanyId && requestedTransportCompanyId !== ownTransportCompanyId) {
+      return { ok: false, error: "Sem permissão para acessar outra transportadora." };
+    }
+    return { ok: true, id: ownTransportCompanyId };
+  }
+
+  if (!MANAGEMENT_ROLES.includes(actorRole)) {
+    return { ok: false, error: "Usuário não vinculado a uma transportadora." };
+  }
+
+  const targetId = requestedTransportCompanyId ?? null;
+  if (!targetId) {
+    return { ok: false, error: "Selecione uma transportadora." };
+  }
+
+  const company = await prisma.transportCompany.findUnique({
+    where: { id: targetId },
+    select: { id: true },
+  });
+  if (!company) {
+    return { ok: false, error: "Transportadora não encontrada." };
+  }
+
+  return { ok: true, id: company.id };
 }
 
 export async function importAvailability(formData: FormData): Promise<ImportAvailabilityResult> {
@@ -57,20 +91,27 @@ export async function importAvailability(formData: FormData): Promise<ImportAvai
     return { success: false, week, imported: 0, pendingApproval: 0, errors: [], error: "Arquivo excede o limite de 5MB." };
   }
 
-  const transportCompanyId = await getActorTransportCompanyId(actorId);
-  if (!transportCompanyId) {
-    return { success: false, week, imported: 0, pendingApproval: 0, errors: [], error: "Usuário não vinculado a uma transportadora." };
+  const transportCompanyId = sanitizeString(formData.get("transportCompanyId")) ?? undefined;
+
+  const access = await resolveTransportCompanyId(
+    actorId,
+    session.user.role as UserRole,
+    transportCompanyId
+  );
+  if (!access.ok) {
+    return { success: false, week, imported: 0, pendingApproval: 0, errors: [], error: access.error };
   }
+  const effectiveTransportCompanyId = access.id;
 
   const dispatchWeek = await prisma.dispatchWeek.findFirst({
-    where: { weekKey, transportCompanyId },
+    where: { weekKey, transportCompanyId: effectiveTransportCompanyId },
     select: { id: true, transportCompanyId: true },
   });
   if (!dispatchWeek) {
     return { success: false, week, imported: 0, pendingApproval: 0, errors: [], error: "Semana não encontrada. Crie a semana antes de importar." };
   }
-  if (dispatchWeek.transportCompanyId !== transportCompanyId) {
-    return { success: false, week, imported: 0, pendingApproval: 0, errors: [], error: "Semana não pertence à sua transportadora." };
+  if (dispatchWeek.transportCompanyId !== effectiveTransportCompanyId) {
+    return { success: false, week, imported: 0, pendingApproval: 0, errors: [], error: "Semana não pertence à transportadora selecionada." };
   }
 
   const arrayBuffer = await file.arrayBuffer();
@@ -86,8 +127,8 @@ export async function importAvailability(formData: FormData): Promise<ImportAvai
         where: { id: record.userId },
         select: { transportCompanyId: true, active: true },
       });
-      if (!user || user.transportCompanyId !== transportCompanyId) {
-        errors.push({ row: record.row, reason: "Motorista não pertence à sua transportadora." });
+      if (!user || user.transportCompanyId !== effectiveTransportCompanyId) {
+        errors.push({ row: record.row, reason: "Motorista não pertence à transportadora selecionada." });
         continue;
       }
 
@@ -148,8 +189,8 @@ export async function importAvailability(formData: FormData): Promise<ImportAvai
         where: { id: warning.userId },
         select: { transportCompanyId: true },
       });
-      if (!user || user.transportCompanyId !== transportCompanyId) {
-        errors.push({ row: warning.row, reason: "Motorista não pertence à sua transportadora." });
+      if (!user || user.transportCompanyId !== effectiveTransportCompanyId) {
+        errors.push({ row: warning.row, reason: "Motorista não pertence à transportadora selecionada." });
         continue;
       }
 
@@ -260,14 +301,22 @@ export interface ListAvailabilitiesResult {
   rows: AvailabilityRow[];
 }
 
-export async function listAvailabilities(dispatchWeekId: string): Promise<ListAvailabilitiesResult> {
+export async function listAvailabilities(
+  dispatchWeekId: string,
+  transportCompanyId?: string
+): Promise<ListAvailabilitiesResult> {
   const session = await requireRole("SUPERVISOR");
   const actorId = session.user.id;
 
-  const transportCompanyId = await getActorTransportCompanyId(actorId);
-  if (!transportCompanyId) {
-    return { success: false, error: "Usuário não vinculado a uma transportadora.", rows: [] };
+  const access = await resolveTransportCompanyId(
+    actorId,
+    session.user.role as UserRole,
+    transportCompanyId
+  );
+  if (!access.ok) {
+    return { success: false, error: access.error, rows: [] };
   }
+  const effectiveTransportCompanyId = access.id;
 
   const week = await prisma.dispatchWeek.findUnique({
     where: { id: dispatchWeekId },
@@ -276,8 +325,8 @@ export async function listAvailabilities(dispatchWeekId: string): Promise<ListAv
   if (!week) {
     return { success: false, error: "Semana não encontrada.", rows: [] };
   }
-  if (week.transportCompanyId !== transportCompanyId) {
-    return { success: false, error: "Semana não pertence à sua transportadora.", rows: [] };
+  if (week.transportCompanyId !== effectiveTransportCompanyId) {
+    return { success: false, error: "Semana não pertence à transportadora selecionada.", rows: [] };
   }
 
   const availabilities = await prisma.driverAvailability.findMany({
@@ -321,15 +370,21 @@ export interface ReviewAvailabilityResult {
 async function reviewAvailability(
   availabilityId: string,
   status: "APPROVED" | "REJECTED",
-  notes?: string | null
+  notes?: string | null,
+  transportCompanyId?: string
 ): Promise<ReviewAvailabilityResult> {
   const session = await requireRole("SUPERVISOR");
   const actorId = session.user.id;
 
-  const transportCompanyId = await getActorTransportCompanyId(actorId);
-  if (!transportCompanyId) {
-    return { success: false, error: "Usuário não vinculado a uma transportadora." };
+  const access = await resolveTransportCompanyId(
+    actorId,
+    session.user.role as UserRole,
+    transportCompanyId
+  );
+  if (!access.ok) {
+    return { success: false, error: access.error };
   }
+  const effectiveTransportCompanyId = access.id;
 
   const availability = await prisma.driverAvailability.findUnique({
     where: { id: availabilityId },
@@ -342,8 +397,8 @@ async function reviewAvailability(
   if (!availability) {
     return { success: false, error: "Disponibilidade não encontrada." };
   }
-  if (availability.dispatchWeek.transportCompanyId !== transportCompanyId) {
-    return { success: false, error: "Disponibilidade não pertence à sua transportadora." };
+  if (availability.dispatchWeek.transportCompanyId !== effectiveTransportCompanyId) {
+    return { success: false, error: "Disponibilidade não pertence à transportadora selecionada." };
   }
   if (!availability.approval) {
     return { success: false, error: "Esta disponibilidade não está aguardando aprovação." };
@@ -372,14 +427,16 @@ async function reviewAvailability(
 
 export async function approveAvailability(
   availabilityId: string,
-  notes?: string | null
+  notes?: string | null,
+  transportCompanyId?: string
 ): Promise<ReviewAvailabilityResult> {
-  return reviewAvailability(availabilityId, "APPROVED", notes);
+  return reviewAvailability(availabilityId, "APPROVED", notes, transportCompanyId);
 }
 
 export async function rejectAvailability(
   availabilityId: string,
-  notes?: string | null
+  notes?: string | null,
+  transportCompanyId?: string
 ): Promise<ReviewAvailabilityResult> {
-  return reviewAvailability(availabilityId, "REJECTED", notes);
+  return reviewAvailability(availabilityId, "REJECTED", notes, transportCompanyId);
 }
