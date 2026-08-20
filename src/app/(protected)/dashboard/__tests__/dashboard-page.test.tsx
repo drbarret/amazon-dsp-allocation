@@ -135,7 +135,7 @@ describe("Dashboard — visão SUPERVISOR+", () => {
 
   it("mostra atalhos para as 4 telas operacionais", async () => {
     await renderDashboard("SUPERVISOR");
-    for (const label of ["Dispatch", "Comportamento", "Motoristas", "Cobrar CNH"]) {
+    for (const label of ["Disponibilidades", "Comportamento", "Motoristas", "Cobrar CNH"]) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
   });
@@ -148,10 +148,10 @@ describe("Dashboard — estado sem semana cadastrada", () => {
     mockAggregateVacancy.mockResolvedValue(null);
     await renderDashboard("SUPERVISOR");
     expect(
-      screen.getByText("Nenhuma semana de dispatch cadastrada"),
+      screen.getByText("Nenhuma semana cadastrada"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/As vagas são gerenciadas na tela Dispatch/),
+      screen.getByText(/As disponibilidades são gerenciadas na tela Disponibilidades/),
     ).toBeInTheDocument();
     // KPI de vagas mostra "—" e hint honesto, não um número enganoso
     expect(screen.getByText("—")).toBeInTheDocument();

@@ -24,7 +24,7 @@ export type NavItem = {
 
 const navIcons: Record<string, LucideIcon> = {
   "/dashboard": GaugeIcon,
-  "/dispatch": CalendarClockIcon,
+  "/disponibilidades": CalendarClockIcon,
   "/behavior": ClipboardListIcon,
   "/drivers": UsersIcon,
   "/cnh": IdCardIcon,

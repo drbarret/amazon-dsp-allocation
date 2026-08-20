@@ -36,7 +36,7 @@ export default async function ProtectedLayout({
   // Regras de exibição por papel — idênticas às anteriores, item por item.
   const navItems: NavItem[] = [
     { href: "/dashboard", label: "Início", show: true },
-    { href: "/dispatch", label: "Dispatch", show: roleIsAtLeast(role, "SUPERVISOR") },
+    { href: "/disponibilidades", label: "Disponibilidades", show: roleIsAtLeast(role, "SUPERVISOR") },
     { href: "/behavior", label: "Comportamento", show: roleIsAtLeast(role, "SUPERVISOR") },
     { href: "/drivers", label: "Motoristas", show: roleIsAtLeast(role, "SUPERVISOR") },
     { href: "/cnh", label: "Cobrar CNH", show: roleIsAtLeast(role, "SUPERVISOR") },

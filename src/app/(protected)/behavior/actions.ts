@@ -166,7 +166,7 @@ export async function markInfraction(input: unknown) {
   });
 
   revalidatePath("/behavior");
-  revalidatePath("/dispatch");
+  revalidatePath("/disponibilidades");
   return {
     success: true,
     infraction: {

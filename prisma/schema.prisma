@@ -116,6 +116,12 @@ enum AssignmentStatus {
   CANCELLED
 }
 
+enum AvailabilityApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum WhatsAppMessageStatus {
   PENDING
   SCHEDULED
@@ -226,6 +232,7 @@ model User {
   transportCompany TransportCompany?    @relation(fields: [transportCompanyId], references: [id])
   driverProfile    DriverProfile?
   availabilities   WeeklyAvailability[]
+  driverAvailabilities DriverAvailability[]
   schedules        Schedule[]
   whatsAppMessages WhatsAppMessage[]
   auditLogs        AuditLog[]
@@ -242,6 +249,8 @@ model User {
   // User-confirmed: account managers mark favorites manually.
   manualFavoriteOverrides FavoriteDriver[] @relation("FavoriteManualOverrideBy")
   assignedAssignments     DispatchAssignment[] @relation("AssignedByUser")
+  availabilityApprovalsReviewed AvailabilityApproval[] @relation("AvailabilityReviewer")
+  availabilitiesImported      DriverAvailability[] @relation("AvailabilityImportedBy")
 
   @@index([email])
   @@index([role, active])
@@ -361,6 +370,75 @@ model WeeklyAvailability {
   @@index([availabilityWeekId, userId])
   @@index([userId, availabilityWeekId])
   @@map("weekly_availabilities")
+}
+
+// Availability imported from the standard XLSX filled by drivers (DA).
+// One row per driver/week, with daily booleans covering Sunday-Saturday
+// plus vehicle flags and import audit fields.
+model DriverAvailability {
+  id               String    @id @default(uuid())
+  dispatchWeekId   String
+  userId           String
+
+  // When the driver filled the form (column A of the XLSX).
+  filledAt DateTime?
+
+  // Import audit.
+  importedAt   DateTime @default(now())
+  importedById String?
+
+  // Vehicle flags (columns E-F).
+  hasNaturalGas  Boolean @default(false)
+  isPassengerCar Boolean @default(false)
+
+  // Daily availability, Sunday -> Saturday (columns G-M).
+  sunAvailable Boolean @default(false)
+  monAvailable Boolean @default(false)
+  tueAvailable Boolean @default(false)
+  wedAvailable Boolean @default(false)
+  thuAvailable Boolean @default(false)
+  friAvailable Boolean @default(false)
+  satAvailable Boolean @default(false)
+
+  // Available for the afternoon/Speed/Ciclo 2 shift (column N).
+  speedAfternoon Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  dispatchWeek DispatchWeek          @relation(fields: [dispatchWeekId], references: [id], onDelete: Cascade)
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  importedBy   User?                 @relation("AvailabilityImportedBy", fields: [importedById], references: [id], onDelete: SetNull)
+  approval     AvailabilityApproval?
+
+  @@unique([dispatchWeekId, userId])
+  @@index([dispatchWeekId, userId])
+  @@index([userId, dispatchWeekId])
+  @@map("driver_availabilities")
+}
+
+// Tracks drivers who filled the XLSX but are inactive at import time.
+// A supervisor/account manager/admin must approve/reject before the
+// availability can be used in allocation.
+model AvailabilityApproval {
+  id String @id @default(uuid())
+
+  driverAvailabilityId String @unique
+  status               AvailabilityApprovalStatus @default(PENDING)
+
+  reviewerId String?
+  reviewedAt DateTime?
+  notes      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  driverAvailability DriverAvailability @relation(fields: [driverAvailabilityId], references: [id], onDelete: Cascade)
+  reviewer           User?              @relation("AvailabilityReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([reviewerId])
+  @@map("availability_approvals")
 }
 
 // ---------- Vacancies ----------
@@ -637,6 +715,7 @@ model DispatchWeek {
 
   transportCompany TransportCompany   @relation(fields: [transportCompanyId], references: [id])
   vacancies        Vacancy[]
+  driverAvailabilities DriverAvailability[]
 
   @@unique([transportCompanyId, year, weekNumber])
   @@index([weekKey])

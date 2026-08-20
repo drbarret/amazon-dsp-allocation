@@ -97,7 +97,7 @@ export async function createVacancy(input: unknown) {
       },
     });
 
-    revalidatePath("/dispatch");
+    revalidatePath("/disponibilidades");
     return { success: true, vacancy };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -186,7 +186,7 @@ export async function updateVacancy(id: string, input: unknown) {
       },
     });
 
-    revalidatePath("/dispatch");
+    revalidatePath("/disponibilidades");
     return { success: true, vacancy };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -232,7 +232,7 @@ export async function deleteVacancy(id: string) {
     },
   });
 
-  revalidatePath("/dispatch");
+  revalidatePath("/disponibilidades");
   return { success: true };
 }
 
@@ -545,7 +545,7 @@ export async function runDistribution(
     },
   });
 
-  revalidatePath("/dispatch");
+  revalidatePath("/disponibilidades");
 
   const driverNameById = new Map(drivers.map((d) => [d.driverProfileId, d.name]));
   const driverUserById = new Map(drivers.map((d) => [d.driverProfileId, d.userId]));

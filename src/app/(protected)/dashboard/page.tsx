@@ -49,9 +49,9 @@ const SHORTCUTS: {
   iconClass: string;
 }[] = [
   {
-    href: "/dispatch",
-    title: "Dispatch",
-    desc: "Distribuir vagas da semana entre motoristas",
+    href: "/disponibilidades",
+    title: "Disponibilidades",
+    desc: "Importar e gerenciar disponibilidades dos motoristas",
     icon: CalendarClockIcon,
     iconClass: "bg-info-bg text-info-fg",
   },
@@ -128,7 +128,7 @@ export default async function DashboardPage() {
   // Cada número vem da MESMA fonte da tela dedicada correspondente:
   // - Motoristas ativos: mesmo where de /drivers (drivers/page.tsx:19-24)
   // - Vagas da semana: DispatchWeek corrente por data + soma de Vacancy.quantity
-  //   (mesmas tabelas de /dispatch, dispatch/page.tsx:20-23 e actions.ts:261-264)
+  //   (mesmas tabelas de Disponibilidades)
   // - CNHs vencidas: findExpiredCnhDrivers (cnh/page.tsx:9)
   // - Infrações pendentes: fila de aprovação, mesmo recorte de
   //   listInfractions (behavior/actions.ts:307-317 e :348)
@@ -225,8 +225,8 @@ export default async function DashboardPage() {
         {weeks.length === 0 ? (
           <EmptyState
             icon={CalendarDaysIcon}
-            title="Nenhuma semana de dispatch cadastrada"
-            hint="Quando uma semana for cadastrada, o status dela aparece aqui. As vagas são gerenciadas na tela Dispatch."
+            title="Nenhuma semana cadastrada"
+            hint="Quando uma semana for cadastrada, o status dela aparece aqui. As disponibilidades são gerenciadas na tela Disponibilidades."
           />
         ) : (
           <ul className="flex flex-col gap-3 px-4 pb-4">

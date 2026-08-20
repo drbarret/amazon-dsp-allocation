@@ -215,6 +215,56 @@ continua funcionando independentemente.
   Auth.js (não armazenamos tokens manualmente).
 - Nunca compartilhe `AUTH_RESEND_KEY` nem a configure em arquivos versionados.
 
+## Disponibilidades
+
+A tela **Disponibilidades** (anteriormente "Dispatch") centraliza o fluxo de
+importação da disponibilidade semanal dos motoristas a partir do arquivo padrão
+`DA_Disponibilidade - Wxx.xlsx`.
+
+### Quem acessa
+
+- Apenas usuários com papel **SUPERVISOR** ou superior (`ACCOUNT_MANAGER`,
+  `ADMIN`).
+- Motoristas (`DRIVER`) não veem o menu e são bloqueados pela server action e
+  pela página (`requireRole('SUPERVISOR')`).
+- A rota antiga `/dispatch` redireciona permanentemente (308) para
+  `/disponibilidades`.
+
+### Funcionamento
+
+1. O supervisor seleciona a semana de trabalho.
+2. Baixa o modelo vazio (`.xlsx` com os cabeçalhos padrão A–N).
+3. Importa o arquivo preenchido pelos motoristas.
+4. O sistema:
+   - **Motoristas ativos**: insere ou atualiza a disponibilidade da semana
+     (`DriverAvailability`).
+   - **Motoristas inativos/não cadastrados**: cria um registro de
+     `AvailabilityApproval` com status `PENDING` para avaliação do supervisor.
+5. Na seção **Aprovações pendentes**, o supervisor aprova ou rejeita cada
+   motorista inativo, registrando auditoria (`AVAILABILITY_UPDATED`).
+
+### Formato do arquivo
+
+| Coluna | Campo | Tipo | Regra |
+|--------|-------|------|-------|
+| A | `filledAt` | DateTime | Horário de preenchimento |
+| B | `email` | string | E-mail do motorista (chave para match) |
+| C | `name` | string | Nome do motorista |
+| D | `cpf` | string | CPF (opcional) |
+| E | `hasNaturalGas` | boolean | "Sim" = true |
+| F | `isPassengerCar` | boolean | "Sim" = true |
+| G–M | `sunAvailable` ... `satAvailable` | boolean | Disponibilidade domingo a sábado |
+| N | `speedAfternoon` | boolean | "Sim" = true (Ciclo 2 / Speed à tarde) |
+
+### Segurança
+
+- Todas as server actions (`importAvailability`, `listAvailabilities`,
+  `approveAvailability`, `rejectAvailability`) exigem `SUPERVISOR`.
+- Cada action revalida se a semana/disponibilidade pertence à transportadora do
+  usuário logado.
+- Uploads são limitados a 5MB.
+- Registro de auditoria é escrito para cada importação e aprovação/rejeição.
+
 ## Licença
 
 Privado — Uso interno ILLT / Instalog.

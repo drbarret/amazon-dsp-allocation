@@ -1,0 +1,357 @@
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
+import XLSX from "xlsx";
+import { prisma } from "@/lib/prisma";
+import { SKIP_INTEGRATION, requireDatabase } from "@/lib/test-db-gate";
+import { importAvailability, listAvailabilities, approveAvailability, rejectAvailability } from "../actions";
+
+const { mockAuth } = vi.hoisted(() => ({
+  mockAuth: vi.fn(),
+}));
+
+vi.mock("@/lib/auth", () => ({
+  auth: mockAuth,
+}));
+
+vi.mock("server-only", () => ({}));
+
+vi.mock("next/cache", () => ({
+  revalidatePath: vi.fn(),
+}));
+
+describe.skipIf(SKIP_INTEGRATION)("importAvailability integration", () => {
+  const runId = Date.now();
+  const supervisorEmail = `integration-supervisor-${runId}@example.com`;
+  const activeDriverEmail = `integration-active-${runId}@example.com`;
+  const inactiveDriverEmail = `integration-inactive-${runId}@example.com`;
+  const unknownDriverEmail = `integration-unknown-${runId}@example.com`;
+
+  let transportCompanyId = "";
+  let supervisorId = "";
+  let activeDriverId = "";
+  let inactiveDriverId = "";
+  let weekId = "";
+  let dbReady = false;
+
+  function session() {
+    return {
+      user: {
+        id: supervisorId,
+        role: "SUPERVISOR",
+        active: true,
+        transportCompanyId,
+      },
+    };
+  }
+
+  function buildXlsx(rows: unknown[][]): Buffer {
+    const worksheet = XLSX.utils.aoa_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Respostas");
+    return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+  }
+
+  const HEADERS = [
+    "Carimbo de data/hora",
+    "Endereço de e-mail",
+    "Nome completo",
+    "CPF",
+    "GNV?",
+    "Passeio?",
+    "Dom",
+    "Seg",
+    "Ter",
+    "Qua",
+    "Qui",
+    "Sex",
+    "Sáb",
+    "Speed?",
+  ];
+
+  function dataRow(overrides: Partial<Record<number, string>> = {}): unknown[] {
+    const base: unknown[] = [
+      "18/08/2026 14:30:00",
+      activeDriverEmail,
+      "Motorista Ativo",
+      "123.456.789-09",
+      "Sim",
+      "Não",
+      "Sim",
+      "Sim",
+      "Sim",
+      "Sim",
+      "Sim",
+      "Sim",
+      "Não",
+      "Sim",
+    ];
+    Object.entries(overrides).forEach(([idx, value]) => {
+      base[Number(idx)] = value;
+    });
+    return base;
+  }
+
+  beforeAll(async () => {
+    await requireDatabase();
+    dbReady = true;
+
+    const company = await prisma.transportCompany.create({
+      data: { name: `Integration Company ${runId}` },
+    });
+    transportCompanyId = company.id;
+
+    const supervisor = await prisma.user.create({
+      data: {
+        email: supervisorEmail,
+        name: "Integration Supervisor",
+        role: "SUPERVISOR",
+        active: true,
+        transportCompanyId,
+      },
+    });
+    supervisorId = supervisor.id;
+
+    const activeDriver = await prisma.user.create({
+      data: {
+        email: activeDriverEmail,
+        name: "Active Driver",
+        role: "DRIVER",
+        active: true,
+        transportCompanyId,
+      },
+    });
+    activeDriverId = activeDriver.id;
+
+    const inactiveDriver = await prisma.user.create({
+      data: {
+        email: inactiveDriverEmail,
+        name: "Inactive Driver",
+        role: "DRIVER",
+        active: false,
+        transportCompanyId,
+      },
+    });
+    inactiveDriverId = inactiveDriver.id;
+
+    const week = await prisma.dispatchWeek.create({
+      data: {
+        transportCompanyId,
+        weekKey: `WK-${runId}`,
+        year: 2026,
+        weekNumber: 35,
+        startDate: new Date("2026-08-30"),
+        endDate: new Date("2026-09-05"),
+        status: "PLANNING",
+        createdById: supervisorId,
+      },
+    });
+    weekId = week.id;
+
+    mockAuth.mockResolvedValue(session() as never);
+  });
+
+  afterAll(async () => {
+    if (!dbReady) return;
+
+    await prisma.availabilityApproval.deleteMany({
+      where: { driverAvailability: { dispatchWeekId: weekId } },
+    });
+    await prisma.driverAvailability.deleteMany({ where: { dispatchWeekId: weekId } });
+    await prisma.dispatchWeek.deleteMany({ where: { id: weekId } });
+    await prisma.user.deleteMany({
+      where: { id: { in: [supervisorId, activeDriverId, inactiveDriverId] } },
+    });
+    await prisma.transportCompany.deleteMany({ where: { id: transportCompanyId } });
+  });
+
+  beforeEach(() => {
+    if (supervisorId) {
+      mockAuth.mockResolvedValue(session() as never);
+    }
+  });
+
+  function buildFormData(week: string, xlsxBuffer: Buffer): FormData {
+    const formData = new FormData();
+    formData.append("week", week);
+    formData.append(
+      "file",
+      new File([new Uint8Array(xlsxBuffer)], "DA_Disponibilidade.xlsx", {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
+    );
+    return formData;
+  }
+
+  it("imports active driver availability and persists DriverAvailability", async () => {
+    const file = buildXlsx([HEADERS, dataRow()]);
+    const result = await importAvailability(buildFormData(`W${runId}`, file));
+
+    expect(result.success).toBe(true);
+    expect(result.imported).toBe(1);
+    expect(result.pendingApproval).toBe(0);
+    expect(result.errors).toHaveLength(0);
+
+    const availability = await prisma.driverAvailability.findFirst({
+      where: { dispatchWeekId: weekId, userId: activeDriverId },
+    });
+    expect(availability).not.toBeNull();
+    expect(availability?.hasNaturalGas).toBe(true);
+    expect(availability?.speedAfternoon).toBe(true);
+  });
+
+  it("imports inactive driver availability and creates AvailabilityApproval PENDING", async () => {
+    const file = buildXlsx([
+      HEADERS,
+      dataRow({ 1: inactiveDriverEmail, 2: "Inactive Driver" }),
+    ]);
+    const result = await importAvailability(buildFormData(`W${runId}`, file));
+
+    expect(result.success).toBe(true);
+    expect(result.imported).toBe(0);
+    expect(result.pendingApproval).toBe(1);
+    expect(result.errors).toHaveLength(0);
+
+    const availability = await prisma.driverAvailability.findFirst({
+      where: { dispatchWeekId: weekId, userId: inactiveDriverId },
+    });
+    expect(availability).not.toBeNull();
+
+    const approval = await prisma.availabilityApproval.findUnique({
+      where: { driverAvailabilityId: availability!.id },
+    });
+    expect(approval).not.toBeNull();
+    expect(approval?.status).toBe("PENDING");
+  });
+
+  it("upserts availability when re-importing the same week", async () => {
+    const file = buildXlsx([
+      HEADERS,
+      dataRow({ 12: "Sim" }), // change satAvailable to true
+    ]);
+    const result = await importAvailability(buildFormData(`W${runId}`, file));
+
+    expect(result.success).toBe(true);
+    expect(result.imported).toBe(1);
+
+    const availability = await prisma.driverAvailability.findFirst({
+      where: { dispatchWeekId: weekId, userId: activeDriverId },
+    });
+    expect(availability?.satAvailable).toBe(true);
+  });
+
+  it("returns error when dispatch week does not exist", async () => {
+    const file = buildXlsx([HEADERS, dataRow()]);
+    const result = await importAvailability(buildFormData("W999999", file));
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/Semana não encontrada/);
+    expect(result.imported).toBe(0);
+  });
+
+  it("rejects DRIVER with permission error", async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: activeDriverId, role: "DRIVER", active: true, transportCompanyId },
+    } as never);
+
+    const file = buildXlsx([HEADERS, dataRow()]);
+    await expect(importAvailability(buildFormData(`W${runId}`, file))).rejects.toThrow(
+      "NEXT_REDIRECT"
+    );
+  });
+
+  it("records unknown driver as error", async () => {
+    const file = buildXlsx([
+      HEADERS,
+      dataRow({ 1: unknownDriverEmail, 2: "Unknown Driver" }),
+    ]);
+    const result = await importAvailability(buildFormData(`W${runId}`, file));
+
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0].reason).toContain("não encontrado");
+  });
+
+
+  describe("listAvailabilities", () => {
+    it("lists imported availabilities for the selected week", async () => {
+      const result = await listAvailabilities(weekId);
+
+      expect(result.success).toBe(true);
+      expect(result.rows.length).toBeGreaterThan(0);
+      const row = result.rows.find((r) => r.userId === activeDriverId);
+      expect(row).not.toBeUndefined();
+      expect(row?.email).toBe(activeDriverEmail);
+    });
+
+    it("rejects week from another transport company", async () => {
+      const otherCompany = await prisma.transportCompany.create({
+        data: { name: "Other Company " + runId },
+      });
+      const otherWeek = await prisma.dispatchWeek.create({
+        data: {
+          transportCompanyId: otherCompany.id,
+          weekKey: "WK-OTHER",
+          year: 2026,
+          weekNumber: 1,
+          startDate: new Date("2026-01-01"),
+          endDate: new Date("2026-01-07"),
+          status: "PLANNING",
+        },
+      });
+
+      const result = await listAvailabilities(otherWeek.id);
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/não pertence/);
+
+      await prisma.dispatchWeek.delete({ where: { id: otherWeek.id } });
+      await prisma.transportCompany.delete({ where: { id: otherCompany.id } });
+    });
+  });
+
+  describe("approve/reject availability", () => {
+    it("approves a pending availability", async () => {
+      const availability = await prisma.driverAvailability.findFirst({
+        where: { dispatchWeekId: weekId, userId: inactiveDriverId },
+      });
+      expect(availability).not.toBeNull();
+
+      const result = await approveAvailability(availability!.id, "Ok para alocar");
+      expect(result.success).toBe(true);
+
+      const approval = await prisma.availabilityApproval.findUnique({
+        where: { driverAvailabilityId: availability!.id },
+      });
+      expect(approval?.status).toBe("APPROVED");
+      expect(approval?.notes).toBe("Ok para alocar");
+    });
+
+    it("rejects a pending availability", async () => {
+      const availability = await prisma.driverAvailability.findFirst({
+        where: { dispatchWeekId: weekId, userId: inactiveDriverId },
+      });
+      expect(availability).not.toBeNull();
+
+      await prisma.availabilityApproval.update({
+        where: { driverAvailabilityId: availability!.id },
+        data: { status: "PENDING" },
+      });
+
+      const result = await rejectAvailability(availability!.id);
+      expect(result.success).toBe(true);
+
+      const approval = await prisma.availabilityApproval.findUnique({
+        where: { driverAvailabilityId: availability!.id },
+      });
+      expect(approval?.status).toBe("REJECTED");
+    });
+
+    it("returns error when availability has no approval record", async () => {
+      const availability = await prisma.driverAvailability.findFirst({
+        where: { dispatchWeekId: weekId, userId: activeDriverId },
+      });
+      expect(availability).not.toBeNull();
+
+      const result = await approveAvailability(availability!.id);
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/não está aguardando aprovação/);
+    });
+  });
+});
