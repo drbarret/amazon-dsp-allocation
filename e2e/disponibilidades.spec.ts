@@ -357,4 +357,152 @@ test.describe("disponibilidades UI", () => {
       fs.rmSync(filePath, { force: true });
     }
   });
+
+  test("edição inline altera disponibilidade", async ({ browser }) => {
+    await withAuthenticatedPage(
+      browser,
+      async (page) => {
+        await page.goto(`${BASE_URL}/disponibilidades`, { waitUntil: "networkidle" });
+
+        // First import an active driver row so we have something to edit.
+        const tmpDir = os.tmpdir();
+        const filePath = path.join(tmpDir, `disponibilidades-edit-${Date.now()}.xlsx`);
+        const worksheet = XLSX.utils.aoa_to_sheet([
+          [
+            "Carimbo de data/hora",
+            "Endereço de e-mail",
+            "Nome completo",
+            "CPF",
+            "GNV?",
+            "Passeio?",
+            "Dom",
+            "Seg",
+            "Ter",
+            "Qua",
+            "Qui",
+            "Sex",
+            "Sáb",
+            "Speed?",
+          ],
+          [
+            "18/08/2026 14:30:00",
+            ACTIVE_DRIVER_EMAIL,
+            "Motorista Teste",
+            "123.456.789-09",
+            "Sim",
+            "Não",
+            "Sim",
+            "Sim",
+            "Sim",
+            "Sim",
+            "Sim",
+            "Sim",
+            "Não",
+            "Sim",
+          ],
+        ]);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Respostas");
+        fs.writeFileSync(
+          filePath,
+          Buffer.from(XLSX.write(workbook, { type: "buffer", bookType: "xlsx" })),
+        );
+
+        try {
+          await page.getByRole("button", { name: /Importar disponibilidades/i }).click();
+          await page.getByLabel(/Arquivo \.xlsx/i).setInputFiles(filePath);
+          await page.getByRole("button", { name: /^Importar$/i }).click();
+          await expect(page.getByText(/Importado:/i)).toBeVisible({ timeout: 10_000 });
+
+          // Start editing the active driver row.
+          await page.getByRole("button", { name: /Editar E2E Active Driver/i }).click();
+
+          // Toggle Monday off.
+          await page.getByLabel(/Seg E2E Active Driver/i).uncheck();
+          // Toggle GNV off.
+          await page.getByLabel(/GNV E2E Active Driver/i).uncheck();
+
+          await page.getByRole("button", { name: /Salvar/i }).click();
+          await expect(page.getByText(/Disponibilidade atualizada/i)).toBeVisible({ timeout: 10_000 });
+
+          // Verify visual state changed (Monday should now show "—").
+          const monCell = page.locator("table").first().locator("tr").filter({ hasText: /E2E Active Driver/i }).locator("td").nth(2);
+          await expect(monCell).toHaveText("—");
+        } finally {
+          fs.rmSync(filePath, { force: true });
+        }
+      },
+      token,
+    );
+  });
+
+  test("limpar semana remove todas as disponibilidades", async ({ browser }) => {
+    await withAuthenticatedPage(
+      browser,
+      async (page) => {
+        await page.goto(`${BASE_URL}/disponibilidades`, { waitUntil: "networkidle" });
+
+        // First import a row so the button is enabled.
+        const tmpDir = os.tmpdir();
+        const filePath = path.join(tmpDir, `disponibilidades-clear-${Date.now()}.xlsx`);
+        const worksheet = XLSX.utils.aoa_to_sheet([
+          [
+            "Carimbo de data/hora",
+            "Endereço de e-mail",
+            "Nome completo",
+            "CPF",
+            "GNV?",
+            "Passeio?",
+            "Dom",
+            "Seg",
+            "Ter",
+            "Qua",
+            "Qui",
+            "Sex",
+            "Sáb",
+            "Speed?",
+          ],
+          [
+            "18/08/2026 14:30:00",
+            ACTIVE_DRIVER_EMAIL,
+            "Motorista Teste",
+            "123.456.789-09",
+            "Sim",
+            "Não",
+            "Sim",
+            "Sim",
+            "Sim",
+            "Sim",
+            "Sim",
+            "Sim",
+            "Não",
+            "Sim",
+          ],
+        ]);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Respostas");
+        fs.writeFileSync(
+          filePath,
+          Buffer.from(XLSX.write(workbook, { type: "buffer", bookType: "xlsx" })),
+        );
+
+        try {
+          await page.getByRole("button", { name: /Importar disponibilidades/i }).click();
+          await page.getByLabel(/Arquivo \.xlsx/i).setInputFiles(filePath);
+          await page.getByRole("button", { name: /^Importar$/i }).click();
+          await expect(page.getByText(/Importado:/i)).toBeVisible({ timeout: 10_000 });
+
+          await page.getByRole("button", { name: /Limpar semana/i }).first().click();
+          await expect(page.getByText(/Tem certeza que deseja remover todas as disponibilidades/i)).toBeVisible({ timeout: 10_000 });
+          await page.getByRole("button", { name: /^Limpar semana$/i }).last().click();
+
+          await expect(page.getByText(/disponibilidade\(s\) removida\(s\)/i)).toBeVisible({ timeout: 10_000 });
+          await expect(page.getByText(/Nenhuma disponibilidade importada para esta semana/i)).toBeVisible();
+        } finally {
+          fs.rmSync(filePath, { force: true });
+        }
+      },
+      token,
+    );
+  });
 });

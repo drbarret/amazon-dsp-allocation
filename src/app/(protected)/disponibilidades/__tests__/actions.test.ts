@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vites
 import XLSX from "xlsx";
 import { prisma } from "@/lib/prisma";
 import { SKIP_INTEGRATION, requireDatabase } from "@/lib/test-db-gate";
-import { importAvailability, listAvailabilities, approveAvailability, rejectAvailability } from "../actions";
+import { importAvailability, listAvailabilities, approveAvailability, rejectAvailability, updateAvailability, clearWeek } from "../actions";
 
 const { mockAuth } = vi.hoisted(() => ({
   mockAuth: vi.fn(),
@@ -162,6 +162,23 @@ describe.skipIf(SKIP_INTEGRATION)("importAvailability integration", () => {
       where: { id: { in: [supervisorId, activeDriverId, inactiveDriverId, ...bulkDriverIds] } },
     });
     await prisma.transportCompany.deleteMany({ where: { id: transportCompanyId } });
+
+    // Clean up any other weeks/companies created by isolation tests.
+    const otherWeeks = await prisma.dispatchWeek.findMany({
+      where: { weekKey: { startsWith: `WK-OTHER` } },
+      select: { id: true },
+    });
+    const otherWeekIds = otherWeeks.map((w) => w.id);
+    if (otherWeekIds.length > 0) {
+      await prisma.availabilityApproval.deleteMany({
+        where: { driverAvailability: { dispatchWeekId: { in: otherWeekIds } } },
+      });
+      await prisma.driverAvailability.deleteMany({ where: { dispatchWeekId: { in: otherWeekIds } } });
+      await prisma.dispatchWeek.deleteMany({ where: { id: { in: otherWeekIds } } });
+    }
+    await prisma.transportCompany.deleteMany({
+      where: { name: { startsWith: "Other" } },
+    });
   });
 
   beforeEach(() => {
@@ -387,6 +404,39 @@ describe.skipIf(SKIP_INTEGRATION)("importAvailability integration", () => {
       });
       expect(count).toBeGreaterThanOrEqual(50);
     });
+
+    it("updates availability fields inline", async () => {
+      const availability = await prisma.driverAvailability.findFirst({
+        where: { dispatchWeekId: weekId, userId: activeDriverId },
+      });
+      expect(availability).not.toBeNull();
+
+      const result = await updateAvailability(availability!.id, {
+        sunAvailable: false,
+        monAvailable: false,
+        hasNaturalGas: true,
+        speedAfternoon: false,
+      });
+      expect(result.success).toBe(true);
+
+      const updated = await prisma.driverAvailability.findUnique({
+        where: { id: availability!.id },
+      });
+      expect(updated?.sunAvailable).toBe(false);
+      expect(updated?.monAvailable).toBe(false);
+      expect(updated?.hasNaturalGas).toBe(true);
+      expect(updated?.speedAfternoon).toBe(false);
+      expect(updated?.importedById).toBe(supervisorId);
+    });
+
+    it("clears all availabilities from a week", async () => {
+      const result = await clearWeek(weekId);
+      expect(result.success).toBe(true);
+      expect(result.deleted).toBeGreaterThan(0);
+
+      const count = await prisma.driverAvailability.count({ where: { dispatchWeekId: weekId } });
+      expect(count).toBe(0);
+    });
   });
 
   describe("admin without transport company", () => {
@@ -452,6 +502,14 @@ describe.skipIf(SKIP_INTEGRATION)("importAvailability integration", () => {
     });
 
     it("approves using requested transportCompanyId", async () => {
+      // Re-import inactive driver since previous tests may have cleared the week.
+      mockAuth.mockResolvedValue(session() as never);
+      const file = buildXlsx([
+        HEADERS,
+        dataRow({ 1: inactiveDriverEmail, 2: "Inactive Driver" }),
+      ]);
+      await importAvailability(buildFormData(`W${runId}`, file));
+
       await prisma.user.update({
         where: { id: supervisorId },
         data: { transportCompanyId: null },

@@ -23,6 +23,8 @@ import {
   XIcon,
   Loader2Icon,
   Building2Icon,
+  PencilIcon,
+  Trash2Icon,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { ActionBar } from "@/components/action-bar";
@@ -35,6 +37,8 @@ import {
   listAvailabilities,
   approveAvailability,
   rejectAvailability,
+  updateAvailability,
+  clearWeek,
   type AvailabilityRow,
   type ImportAvailabilityResult,
 } from "./actions";
@@ -127,6 +131,10 @@ export function DisponibilidadesClient({
   const [lastResult, setLastResult] = useState<ImportAvailabilityResult | null>(null);
 
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
+  const [editingRowId, setEditingRowId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<Partial<AvailabilityRow>>({});
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
 
   const selectedWeek = useMemo(
     () => filteredWeeks.find((w) => w.id === selectedWeekId) ?? null,
@@ -233,6 +241,62 @@ export function DisponibilidadesClient({
     });
   }
 
+  function handleUpdate(id: string) {
+    startTransition(async () => {
+      try {
+        const result = await updateAvailability(
+          id,
+          {
+            hasNaturalGas: editDraft.hasNaturalGas,
+            isPassengerCar: editDraft.isPassengerCar,
+            sunAvailable: editDraft.sunAvailable,
+            monAvailable: editDraft.monAvailable,
+            tueAvailable: editDraft.tueAvailable,
+            wedAvailable: editDraft.wedAvailable,
+            thuAvailable: editDraft.thuAvailable,
+            friAvailable: editDraft.friAvailable,
+            satAvailable: editDraft.satAvailable,
+            speedAfternoon: editDraft.speedAfternoon,
+          },
+          effectiveTransportCompanyId
+        );
+        if (result.success) {
+          toast.success("Disponibilidade atualizada.");
+          setEditingRowId(null);
+          loadRows(selectedWeekId);
+        } else {
+          toast.error(result.error ?? "Erro ao atualizar.");
+        }
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao atualizar.");
+      }
+    });
+  }
+
+  function handleClearWeek() {
+    if (!selectedWeekId) {
+      toast.error("Selecione uma semana.");
+      return;
+    }
+    setIsClearing(true);
+    startTransition(async () => {
+      try {
+        const result = await clearWeek(selectedWeekId, effectiveTransportCompanyId);
+        if (result.success) {
+          toast.success(`${result.deleted} disponibilidade(s) removida(s).`);
+          setClearDialogOpen(false);
+          loadRows(selectedWeekId);
+        } else {
+          toast.error(result.error ?? "Erro ao limpar semana.");
+        }
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao limpar semana.");
+      } finally {
+        setIsClearing(false);
+      }
+    });
+  }
+
   function handleReject(id: string) {
     startTransition(async () => {
       try {
@@ -247,6 +311,23 @@ export function DisponibilidadesClient({
         toast.error(e instanceof Error ? e.message : "Erro ao rejeitar.");
       }
     });
+  }
+
+  function startEditing(row: AvailabilityRow) {
+    setEditingRowId(row.id);
+    setEditDraft({ ...row });
+  }
+
+  function cancelEditing() {
+    setEditingRowId(null);
+    setEditDraft({});
+  }
+
+  function toggleDraft(field: keyof AvailabilityRow) {
+    setEditDraft((prev) => ({
+      ...prev,
+      [field]: !prev[field],
+    }));
   }
 
   const availabilityColumns: DataTableColumn<AvailabilityRow>[] = [
@@ -272,49 +353,170 @@ export function DisponibilidadesClient({
       (label, idx): DataTableColumn<AvailabilityRow> => ({
         header: label,
         className: "text-center",
-        cell: (d) => (
-          <div className="flex justify-center">
-            <DayCell
-              value={[
-                d.sunAvailable,
-                d.monAvailable,
-                d.tueAvailable,
-                d.wedAvailable,
-                d.thuAvailable,
-                d.friAvailable,
-                d.satAvailable,
-              ][idx]}
-            />
-          </div>
-        ),
+        cell: (d) => {
+          const field = [
+            "sunAvailable",
+            "monAvailable",
+            "tueAvailable",
+            "wedAvailable",
+            "thuAvailable",
+            "friAvailable",
+            "satAvailable",
+          ][idx] as keyof AvailabilityRow;
+          const isEditing = editingRowId === d.id;
+          const value = isEditing ? Boolean(editDraft[field]) : [
+            d.sunAvailable,
+            d.monAvailable,
+            d.tueAvailable,
+            d.wedAvailable,
+            d.thuAvailable,
+            d.friAvailable,
+            d.satAvailable,
+          ][idx];
+
+          if (isEditing) {
+            return (
+              <div className="flex justify-center">
+                <input
+                  type="checkbox"
+                  checked={value}
+                  onChange={() => toggleDraft(field)}
+                  aria-label={`${label} ${d.name ?? d.email}`}
+                  className="size-4 cursor-pointer accent-primary"
+                />
+              </div>
+            );
+          }
+
+          return (
+            <div className="flex justify-center">
+              <DayCell value={value} />
+            </div>
+          );
+        },
       }),
     ),
     {
       header: "GNV",
       className: "text-center",
-      cell: (d) => (
-        <div className="flex justify-center">
-          <DayCell value={d.hasNaturalGas} />
-        </div>
-      ),
+      cell: (d) => {
+        const isEditing = editingRowId === d.id;
+        const value = isEditing ? Boolean(editDraft.hasNaturalGas) : d.hasNaturalGas;
+        if (isEditing) {
+          return (
+            <div className="flex justify-center">
+              <input
+                type="checkbox"
+                checked={value}
+                onChange={() => toggleDraft("hasNaturalGas")}
+                aria-label={`GNV ${d.name ?? d.email}`}
+                className="size-4 cursor-pointer accent-primary"
+              />
+            </div>
+          );
+        }
+        return (
+          <div className="flex justify-center">
+            <DayCell value={value} />
+          </div>
+        );
+      },
     },
     {
       header: "Passenger",
       className: "text-center",
-      cell: (d) => (
-        <div className="flex justify-center">
-          <DayCell value={d.isPassengerCar} />
-        </div>
-      ),
+      cell: (d) => {
+        const isEditing = editingRowId === d.id;
+        const value = isEditing ? Boolean(editDraft.isPassengerCar) : d.isPassengerCar;
+        if (isEditing) {
+          return (
+            <div className="flex justify-center">
+              <input
+                type="checkbox"
+                checked={value}
+                onChange={() => toggleDraft("isPassengerCar")}
+                aria-label={`Passenger ${d.name ?? d.email}`}
+                className="size-4 cursor-pointer accent-primary"
+              />
+            </div>
+          );
+        }
+        return (
+          <div className="flex justify-center">
+            <DayCell value={value} />
+          </div>
+        );
+      },
     },
     {
       header: "Speed Tarde",
       className: "text-center",
-      cell: (d) => (
-        <div className="flex justify-center">
-          <DayCell value={d.speedAfternoon} />
-        </div>
-      ),
+      cell: (d) => {
+        const isEditing = editingRowId === d.id;
+        const value = isEditing ? Boolean(editDraft.speedAfternoon) : d.speedAfternoon;
+        if (isEditing) {
+          return (
+            <div className="flex justify-center">
+              <input
+                type="checkbox"
+                checked={value}
+                onChange={() => toggleDraft("speedAfternoon")}
+                aria-label={`Speed Tarde ${d.name ?? d.email}`}
+                className="size-4 cursor-pointer accent-primary"
+              />
+            </div>
+          );
+        }
+        return (
+          <div className="flex justify-center">
+            <DayCell value={value} />
+          </div>
+        );
+      },
+    },
+    {
+      header: "Ações",
+      className: "text-right",
+      cell: (d) => {
+        const isEditing = editingRowId === d.id;
+        return (
+          <span className="flex items-center justify-end gap-1">
+            {isEditing ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleUpdate(d.id)}
+                  disabled={isPending}
+                >
+                  <CheckIcon className="mr-1 size-3.5" />
+                  Salvar
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={cancelEditing}
+                  disabled={isPending}
+                >
+                  <XIcon className="mr-1 size-3.5" />
+                  Cancelar
+                </Button>
+              </>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => startEditing(d)}
+                disabled={isPending || editingRowId !== null}
+                aria-label={`Editar ${d.name ?? d.email}`}
+              >
+                <PencilIcon className="mr-1 size-3.5" />
+                Editar
+              </Button>
+            )}
+          </span>
+        );
+      },
     },
   ];
 
@@ -395,6 +597,14 @@ export function DisponibilidadesClient({
         >
           <UploadIcon className="mr-2 size-4" />
           Importar disponibilidades (.xlsx)
+        </Button>
+        <Button
+          variant="destructive"
+          onClick={() => setClearDialogOpen(true)}
+          disabled={isPending || isImporting || !selectedWeekId || rows.length === 0}
+        >
+          <Trash2Icon className="mr-2 size-4" />
+          Limpar semana
         </Button>
       </ActionBar>
 
@@ -570,6 +780,40 @@ export function DisponibilidadesClient({
               </>
             ) : (
               "Importar"
+            )}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      <Dialog open={clearDialogOpen} onOpenChange={setClearDialogOpen}>
+        <DialogHeader>
+          <DialogTitle>Limpar semana</DialogTitle>
+          <DialogDescription>
+            Tem certeza que deseja remover todas as disponibilidades importadas
+            para a semana <strong>{selectedWeek?.weekKey}</strong>? Essa ação
+            não pode ser desfeita, mas a semana em si permanecerá cadastrada.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => setClearDialogOpen(false)}
+            disabled={isClearing}
+          >
+            Cancelar
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={handleClearWeek}
+            disabled={isClearing}
+          >
+            {isClearing ? (
+              <>
+                <Loader2Icon className="mr-2 size-4 animate-spin" />
+                Removendo...
+              </>
+            ) : (
+              "Limpar semana"
             )}
           </Button>
         </DialogFooter>

@@ -449,6 +449,115 @@ async function reviewAvailability(
   return { success: true };
 }
 
+export async function updateAvailability(
+  availabilityId: string,
+  data: {
+    hasNaturalGas?: boolean;
+    isPassengerCar?: boolean;
+    sunAvailable?: boolean;
+    monAvailable?: boolean;
+    tueAvailable?: boolean;
+    wedAvailable?: boolean;
+    thuAvailable?: boolean;
+    friAvailable?: boolean;
+    satAvailable?: boolean;
+    speedAfternoon?: boolean;
+  },
+  transportCompanyId?: string
+): Promise<ReviewAvailabilityResult> {
+  const session = await requireRole("SUPERVISOR");
+  const actorId = session.user.id;
+
+  const access = await resolveTransportCompanyId(
+    actorId,
+    session.user.role as UserRole,
+    transportCompanyId
+  );
+  if (!access.ok) {
+    return { success: false, error: access.error };
+  }
+  const effectiveTransportCompanyId = access.id;
+
+  const availability = await prisma.driverAvailability.findUnique({
+    where: { id: availabilityId },
+    include: {
+      dispatchWeek: { select: { transportCompanyId: true } },
+    },
+  });
+
+  if (!availability) {
+    return { success: false, error: "Disponibilidade não encontrada." };
+  }
+  if (availability.dispatchWeek.transportCompanyId !== effectiveTransportCompanyId) {
+    return { success: false, error: "Disponibilidade não pertence à transportadora selecionada." };
+  }
+
+  await prisma.driverAvailability.update({
+    where: { id: availabilityId },
+    data: {
+      ...data,
+      importedById: actorId,
+    },
+  });
+
+  await writeAuditLog({
+    eventType: "AVAILABILITY_UPDATED",
+    actorId,
+    targetUserId: availability.userId,
+    metadata: { driverAvailabilityId: availabilityId, action: "INLINE_EDIT" },
+  });
+
+  revalidatePath("/disponibilidades");
+  return { success: true };
+}
+
+export async function clearWeek(
+  dispatchWeekId: string,
+  transportCompanyId?: string
+): Promise<{ success: boolean; deleted: number; error?: string }> {
+  const session = await requireRole("SUPERVISOR");
+  const actorId = session.user.id;
+
+  const access = await resolveTransportCompanyId(
+    actorId,
+    session.user.role as UserRole,
+    transportCompanyId
+  );
+  if (!access.ok) {
+    return { success: false, deleted: 0, error: access.error };
+  }
+  const effectiveTransportCompanyId = access.id;
+
+  const week = await prisma.dispatchWeek.findUnique({
+    where: { id: dispatchWeekId },
+    select: { transportCompanyId: true, weekKey: true },
+  });
+  if (!week) {
+    return { success: false, deleted: 0, error: "Semana não encontrada." };
+  }
+  if (week.transportCompanyId !== effectiveTransportCompanyId) {
+    return { success: false, deleted: 0, error: "Semana não pertence à transportadora selecionada." };
+  }
+
+  const result = await prisma.driverAvailability.deleteMany({
+    where: { dispatchWeekId },
+  });
+
+  await writeAuditLog({
+    eventType: "AVAILABILITY_UPDATED",
+    actorId,
+    metadata: {
+      dispatchWeekId,
+      weekKey: week.weekKey,
+      deleted: result.count,
+      action: "CLEAR_WEEK",
+    },
+  });
+
+  revalidatePath("/disponibilidades");
+  return { success: true, deleted: result.count };
+}
+
 export async function approveAvailability(
   availabilityId: string,
   notes?: string | null,
