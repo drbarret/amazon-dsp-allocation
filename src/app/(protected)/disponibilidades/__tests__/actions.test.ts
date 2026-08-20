@@ -31,6 +31,7 @@ describe.skipIf(SKIP_INTEGRATION)("importAvailability integration", () => {
   let inactiveDriverId = "";
   let weekId = "";
   let dbReady = false;
+  const bulkDriverIds: string[] = [];
 
   function session() {
     return {
@@ -158,7 +159,7 @@ describe.skipIf(SKIP_INTEGRATION)("importAvailability integration", () => {
     await prisma.driverAvailability.deleteMany({ where: { dispatchWeekId: weekId } });
     await prisma.dispatchWeek.deleteMany({ where: { id: weekId } });
     await prisma.user.deleteMany({
-      where: { id: { in: [supervisorId, activeDriverId, inactiveDriverId] } },
+      where: { id: { in: [supervisorId, activeDriverId, inactiveDriverId, ...bulkDriverIds] } },
     });
     await prisma.transportCompany.deleteMany({ where: { id: transportCompanyId } });
   });
@@ -352,6 +353,39 @@ describe.skipIf(SKIP_INTEGRATION)("importAvailability integration", () => {
       const result = await approveAvailability(availability!.id);
       expect(result.success).toBe(false);
       expect(result.error).toMatch(/não está aguardando aprovação/);
+    });
+
+    it("imports a large batch without transaction timeout", async () => {
+      // Create 50 active drivers to stress-test the transaction.
+      const drivers = await Promise.all(
+        Array.from({ length: 50 }, (_, i) =>
+          prisma.user.create({
+            data: {
+              email: `bulk-active-${runId}-${i}@example.com`,
+              name: `Bulk Driver ${i}`,
+              role: "DRIVER",
+              active: true,
+              transportCompanyId,
+            },
+          })
+        )
+      );
+      bulkDriverIds.push(...drivers.map((d) => d.id));
+
+      const rows: unknown[][] = [HEADERS];
+      for (let i = 0; i < drivers.length; i++) {
+        rows.push(dataRow({ 1: drivers[i].email, 2: `Bulk Driver ${i}` }));
+      }
+
+      const result = await importAvailability(buildFormData(`W${runId}`, buildXlsx(rows)));
+      expect(result.success).toBe(true);
+      expect(result.imported).toBe(50);
+      expect(result.errors).toHaveLength(0);
+
+      const count = await prisma.driverAvailability.count({
+        where: { dispatchWeekId: weekId },
+      });
+      expect(count).toBeGreaterThanOrEqual(50);
     });
   });
 

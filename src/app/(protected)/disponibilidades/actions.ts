@@ -117,139 +117,163 @@ export async function importAvailability(formData: FormData): Promise<ImportAvai
   const arrayBuffer = await file.arrayBuffer();
   const parseResult = await parseXlsxAvailability(Buffer.from(arrayBuffer), week);
 
-  const errors: AvailabilityError[] = [...parseResult.errors];
+  // Pre-fetch users to avoid N+1 queries inside the transaction and to validate
+  // company membership before writing anything.
+  const userIds = new Set<string>([
+    ...parseResult.availabilities.map((r) => r.userId),
+    ...parseResult.warnings.map((w) => w.userId).filter(Boolean) as string[],
+  ]);
+
+  const users = await prisma.user.findMany({
+    where: { id: { in: Array.from(userIds) } },
+    select: { id: true, transportCompanyId: true, active: true },
+  });
+  const userById = new Map(users.map((u) => [u.id, u]));
+
+  const validAvailabilities = parseResult.availabilities.filter((record) => {
+    const user = userById.get(record.userId);
+    return user && user.transportCompanyId === effectiveTransportCompanyId && user.active;
+  });
+
+  const invalidAvailabilityReasons: AvailabilityError[] = parseResult.availabilities
+    .filter((record) => !validAvailabilities.some((r) => r.userId === record.userId && r.row === record.row))
+    .map((record) => ({
+      row: record.row,
+      reason: "Motorista não pertence à transportadora selecionada.",
+    }));
+
+  const validWarnings = parseResult.warnings.filter((warning) => {
+    if (!warning.userId) return false;
+    const user = userById.get(warning.userId);
+    return user && user.transportCompanyId === effectiveTransportCompanyId;
+  });
+
+  const invalidWarningReasons: AvailabilityError[] = parseResult.warnings
+    .filter((warning) => !warning.userId || !validWarnings.some((w) => w.userId === warning.userId && w.row === warning.row))
+    .map((warning) => ({
+      row: warning.row,
+      reason: warning.userId
+        ? "Motorista não pertence à transportadora selecionada."
+        : warning.reason,
+    }));
+
+  const errors: AvailabilityError[] = [
+    ...parseResult.errors,
+    ...invalidAvailabilityReasons,
+    ...invalidWarningReasons,
+  ];
   let imported = 0;
   let pendingApproval = 0;
 
-  await prisma.$transaction(async (tx) => {
-    for (const record of parseResult.availabilities) {
-      const user = await tx.user.findUnique({
-        where: { id: record.userId },
-        select: { transportCompanyId: true, active: true },
-      });
-      if (!user || user.transportCompanyId !== effectiveTransportCompanyId) {
-        errors.push({ row: record.row, reason: "Motorista não pertence à transportadora selecionada." });
-        continue;
-      }
-
-      const availability = await tx.driverAvailability.upsert({
-        where: {
-          dispatchWeekId_userId: {
+  await prisma.$transaction(
+    async (tx) => {
+      for (const record of validAvailabilities) {
+        const availability = await tx.driverAvailability.upsert({
+          where: {
+            dispatchWeekId_userId: {
+              dispatchWeekId: dispatchWeek.id,
+              userId: record.userId,
+            },
+          },
+          create: {
             dispatchWeekId: dispatchWeek.id,
             userId: record.userId,
+            filledAt: record.filledAt,
+            importedById: actorId,
+            hasNaturalGas: record.hasNaturalGas,
+            isPassengerCar: record.isPassengerCar,
+            sunAvailable: record.sunAvailable,
+            monAvailable: record.monAvailable,
+            tueAvailable: record.tueAvailable,
+            wedAvailable: record.wedAvailable,
+            thuAvailable: record.thuAvailable,
+            friAvailable: record.friAvailable,
+            satAvailable: record.satAvailable,
+            speedAfternoon: record.speedAfternoon,
           },
-        },
-        create: {
-          dispatchWeekId: dispatchWeek.id,
-          userId: record.userId,
-          filledAt: record.filledAt,
-          importedById: actorId,
-          hasNaturalGas: record.hasNaturalGas,
-          isPassengerCar: record.isPassengerCar,
-          sunAvailable: record.sunAvailable,
-          monAvailable: record.monAvailable,
-          tueAvailable: record.tueAvailable,
-          wedAvailable: record.wedAvailable,
-          thuAvailable: record.thuAvailable,
-          friAvailable: record.friAvailable,
-          satAvailable: record.satAvailable,
-          speedAfternoon: record.speedAfternoon,
-        },
-        update: {
-          filledAt: record.filledAt,
-          importedById: actorId,
-          hasNaturalGas: record.hasNaturalGas,
-          isPassengerCar: record.isPassengerCar,
-          sunAvailable: record.sunAvailable,
-          monAvailable: record.monAvailable,
-          tueAvailable: record.tueAvailable,
-          wedAvailable: record.wedAvailable,
-          thuAvailable: record.thuAvailable,
-          friAvailable: record.friAvailable,
-          satAvailable: record.satAvailable,
-          speedAfternoon: record.speedAfternoon,
-        },
-      });
+          update: {
+            filledAt: record.filledAt,
+            importedById: actorId,
+            hasNaturalGas: record.hasNaturalGas,
+            isPassengerCar: record.isPassengerCar,
+            sunAvailable: record.sunAvailable,
+            monAvailable: record.monAvailable,
+            tueAvailable: record.tueAvailable,
+            wedAvailable: record.wedAvailable,
+            thuAvailable: record.thuAvailable,
+            friAvailable: record.friAvailable,
+            satAvailable: record.satAvailable,
+            speedAfternoon: record.speedAfternoon,
+          },
+        });
 
-      // Motorista ativo: remove qualquer aprovação pendente anterior.
-      await tx.availabilityApproval.deleteMany({
-        where: { driverAvailabilityId: availability.id },
-      });
+        // Active driver: remove any previous pending approval.
+        await tx.availabilityApproval.deleteMany({
+          where: { driverAvailabilityId: availability.id },
+        });
 
-      imported++;
-    }
-
-    for (const warning of parseResult.warnings) {
-      if (!warning.userId) {
-        errors.push({ row: warning.row, reason: warning.reason });
-        continue;
+        imported++;
       }
 
-      const user = await tx.user.findUnique({
-        where: { id: warning.userId },
-        select: { transportCompanyId: true },
-      });
-      if (!user || user.transportCompanyId !== effectiveTransportCompanyId) {
-        errors.push({ row: warning.row, reason: "Motorista não pertence à transportadora selecionada." });
-        continue;
-      }
-
-      const availability = await tx.driverAvailability.upsert({
-        where: {
-          dispatchWeekId_userId: {
+      for (const warning of validWarnings) {
+        const availability = await tx.driverAvailability.upsert({
+          where: {
+            dispatchWeekId_userId: {
+              dispatchWeekId: dispatchWeek.id,
+              userId: warning.userId as string,
+            },
+          },
+          create: {
             dispatchWeekId: dispatchWeek.id,
-            userId: warning.userId,
+            userId: warning.userId as string,
+            filledAt: warning.filledAt,
+            importedById: actorId,
+            hasNaturalGas: warning.hasNaturalGas,
+            isPassengerCar: warning.isPassengerCar,
+            sunAvailable: warning.sunAvailable,
+            monAvailable: warning.monAvailable,
+            tueAvailable: warning.tueAvailable,
+            wedAvailable: warning.wedAvailable,
+            thuAvailable: warning.thuAvailable,
+            friAvailable: warning.friAvailable,
+            satAvailable: warning.satAvailable,
+            speedAfternoon: warning.speedAfternoon,
           },
-        },
-        create: {
-          dispatchWeekId: dispatchWeek.id,
-          userId: warning.userId,
-          filledAt: warning.filledAt,
-          importedById: actorId,
-          hasNaturalGas: warning.hasNaturalGas,
-          isPassengerCar: warning.isPassengerCar,
-          sunAvailable: warning.sunAvailable,
-          monAvailable: warning.monAvailable,
-          tueAvailable: warning.tueAvailable,
-          wedAvailable: warning.wedAvailable,
-          thuAvailable: warning.thuAvailable,
-          friAvailable: warning.friAvailable,
-          satAvailable: warning.satAvailable,
-          speedAfternoon: warning.speedAfternoon,
-        },
-        update: {
-          filledAt: warning.filledAt,
-          importedById: actorId,
-          hasNaturalGas: warning.hasNaturalGas,
-          isPassengerCar: warning.isPassengerCar,
-          sunAvailable: warning.sunAvailable,
-          monAvailable: warning.monAvailable,
-          tueAvailable: warning.tueAvailable,
-          wedAvailable: warning.wedAvailable,
-          thuAvailable: warning.thuAvailable,
-          friAvailable: warning.friAvailable,
-          satAvailable: warning.satAvailable,
-          speedAfternoon: warning.speedAfternoon,
-        },
-      });
+          update: {
+            filledAt: warning.filledAt,
+            importedById: actorId,
+            hasNaturalGas: warning.hasNaturalGas,
+            isPassengerCar: warning.isPassengerCar,
+            sunAvailable: warning.sunAvailable,
+            monAvailable: warning.monAvailable,
+            tueAvailable: warning.tueAvailable,
+            wedAvailable: warning.wedAvailable,
+            thuAvailable: warning.thuAvailable,
+            friAvailable: warning.friAvailable,
+            satAvailable: warning.satAvailable,
+            speedAfternoon: warning.speedAfternoon,
+          },
+        });
 
-      await tx.availabilityApproval.upsert({
-        where: { driverAvailabilityId: availability.id },
-        create: {
-          driverAvailabilityId: availability.id,
-          status: "PENDING",
-        },
-        update: {
-          status: "PENDING",
-          reviewerId: null,
-          reviewedAt: null,
-          notes: null,
-        },
-      });
+        await tx.availabilityApproval.upsert({
+          where: { driverAvailabilityId: availability.id },
+          create: {
+            driverAvailabilityId: availability.id,
+            status: "PENDING",
+          },
+          update: {
+            status: "PENDING",
+            reviewerId: null,
+            reviewedAt: null,
+            notes: null,
+          },
+        });
 
-      pendingApproval++;
-    }
-  });
+        pendingApproval++;
+      }
+    },
+    { timeout: 30000 }
+  );
 
   await writeAuditLog({
     eventType: "AVAILABILITY_SUBMITTED",
