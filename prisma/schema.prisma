@@ -51,6 +51,15 @@ enum VehicleType {
   PASSEIO
 }
 
+// Eligibility for VacancyBlock: which vehicle types a driver must have to be
+// assigned to this block. Stored as an array on the block itself (Postgres
+// native array) — avoids a join table for a field that holds at most 3 values.
+enum VehicleEligibility {
+  GNV
+  CARGO_VAN
+  PASSENGER
+}
+
 enum VehicleRestrictionCode {
   GNV
   REFRIGERADOR
@@ -184,6 +193,7 @@ model TransportCompany {
   users           User[]
   vacancyPrograms VacancyProgram[]
   dispatchWeeks   DispatchWeek[]
+  vacancyBlocks   VacancyBlock[]
 
   @@map("transport_companies")
 }
@@ -716,6 +726,7 @@ model DispatchWeek {
   transportCompany TransportCompany   @relation(fields: [transportCompanyId], references: [id])
   vacancies        Vacancy[]
   driverAvailabilities DriverAvailability[]
+  blockDailyVacancies  BlockDailyVacancy[]
 
   @@unique([transportCompanyId, year, weekNumber])
   @@index([weekKey])
@@ -739,6 +750,56 @@ model Vacancy {
   @@unique([dispatchWeekId, date, vehicleType, shiftBlock])
   @@index([dispatchWeekId, date])
   @@map("vacancies")
+}
+
+// ---------- Vacancy Blocks (manual weekly vacancy planning) ----------
+
+// A configurable block of vacancies per transport company. Each block has a
+// name, cycle (1 or 2), eligible vehicle types, and optional shift/escala
+// label. The eligibility is stored as a Postgres array so it can be edited
+// per-block without a join table.
+model VacancyBlock {
+  id                   String               @id @default(uuid())
+  transportCompanyId   String
+  name                 String
+  cycle                Int                    // 1 or 2
+  eligibleVehicleTypes VehicleEligibility[]   // e.g., [GNV], [CARGO_VAN], [CARGO_VAN, GNV]
+  shift                String?                // optional shift/escala label
+  active               Boolean                @default(true)
+  sortOrder            Int                    @default(0)
+  createdById          String?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  updatedById          String?
+
+  transportCompany TransportCompany    @relation(fields: [transportCompanyId], references: [id], onDelete: Cascade)
+  dailyVacancies   BlockDailyVacancy[]
+
+  @@index([transportCompanyId, active, sortOrder])
+  @@map("vacancy_blocks")
+}
+
+// Daily vacancy count for a specific block within a dispatch week.
+// Keyed by (dispatchWeekId, vacancyBlockId, dayOfWeek) where dayOfWeek is
+// 0=Sunday … 6=Saturday, matching JavaScript Date.getDay().
+model BlockDailyVacancy {
+  id             String   @id @default(uuid())
+  dispatchWeekId String
+  vacancyBlockId String
+  dayOfWeek      Int      // 0=Dom, 1=Seg, …, 6=Sáb
+  count          Int      @default(0) // >= 0
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  updatedById    String?
+
+  dispatchWeek DispatchWeek @relation(fields: [dispatchWeekId], references: [id], onDelete: Cascade)
+  vacancyBlock VacancyBlock @relation(fields: [vacancyBlockId], references: [id], onDelete: Cascade)
+
+  @@unique([dispatchWeekId, vacancyBlockId, dayOfWeek])
+  @@index([dispatchWeekId, vacancyBlockId])
+  @@index([vacancyBlockId])
+  @@map("block_daily_vacancies")
 }
 
 model DispatchAssignment {

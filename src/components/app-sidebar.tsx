@@ -8,6 +8,7 @@ import {
   ClipboardListIcon,
   GaugeIcon,
   IdCardIcon,
+  LayoutGridIcon,
   MenuIcon,
   UsersIcon,
   XIcon,
@@ -25,6 +26,7 @@ export type NavItem = {
 const navIcons: Record<string, LucideIcon> = {
   "/dashboard": GaugeIcon,
   "/disponibilidades": CalendarClockIcon,
+  "/vagas": LayoutGridIcon,
   "/behavior": ClipboardListIcon,
   "/drivers": UsersIcon,
   "/cnh": IdCardIcon,
