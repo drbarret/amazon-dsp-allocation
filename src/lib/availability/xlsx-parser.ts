@@ -113,23 +113,21 @@ export function parseDateTime(value: unknown): Date | null {
   if (!str) return null;
 
   // dd/MM/yyyy HH:mm:ss or dd/MM/yyyy H:mm:ss
+  // Timestamps in the spreadsheet come from Brazilian drivers, so treat them
+  // as America/Sao_Paulo (BRT = UTC-3) for a consistent instant regardless of
+  // the runtime timezone.
   const match = str.match(
     /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/
   );
   if (match) {
     const [, day, month, year, hour, minute, second] = match;
-    const d = new Date(
-      Number(year),
-      Number(month) - 1,
-      Number(day),
-      Number(hour),
-      Number(minute),
-      Number(second)
-    );
+    const pad = (n: string) => n.padStart(2, "0");
+    const iso = `${year}-${pad(month)}-${pad(day)}T${pad(hour)}:${minute}:${second}-03:00`;
+    const d = new Date(iso);
     if (
-      d.getDate() === Number(day) &&
-      d.getMonth() === Number(month) - 1 &&
-      d.getFullYear() === Number(year)
+      d.getUTCDate() === Number(day) &&
+      d.getUTCMonth() === Number(month) - 1 &&
+      d.getUTCFullYear() === Number(year)
     ) {
       return d;
     }

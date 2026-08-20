@@ -129,8 +129,7 @@ describe("parseDateTime", () => {
   it("parses dd/MM/yyyy H:mm:ss", () => {
     const d = parseDateTime("18/08/2026 9:05:00");
     expect(d).not.toBeNull();
-    expect(d?.getHours()).toBe(9);
-    expect(d?.getMinutes()).toBe(5);
+    expect(d?.toISOString()).toBe("2026-08-18T12:05:00.000Z");
   });
 
   it("returns null for invalid", () => {
