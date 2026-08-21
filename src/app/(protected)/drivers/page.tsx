@@ -26,7 +26,7 @@ export interface DriverRow {
 export default async function DriversPage(props: {
   searchParams?: Promise<{ status?: string }>;
 }) {
-  const session = await requireRole("SUPERVISOR");
+  await requireRole("SUPERVISOR");
   const searchParams = await props.searchParams;
   const statusFilter = searchParams?.status ?? "active";
 
