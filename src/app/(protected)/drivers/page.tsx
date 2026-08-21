@@ -99,7 +99,6 @@ export default async function DriversPage(props: {
   return (
     <DriversClient
       drivers={rows}
-      currentActorRole={session.user.role as string}
       pendingDeactivationCount={pendingCount}
       initialStatusFilter={statusFilter}
     />

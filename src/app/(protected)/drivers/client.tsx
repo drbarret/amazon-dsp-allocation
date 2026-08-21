@@ -35,14 +35,12 @@ const ALLOWED_CITIES = [
 
 interface Props {
   drivers: DriverRow[];
-  currentActorRole: string;
   pendingDeactivationCount: number;
   initialStatusFilter: string;
 }
 
 export function DriversClient({
   drivers,
-  currentActorRole: _currentActorRole,
   pendingDeactivationCount,
   initialStatusFilter,
 }: Props) {
