@@ -26,7 +26,7 @@ async function requireSupervisorOrAbove() {
   return session;
 }
 
-async function resolveTransportCompanyId(
+export async function resolveTransportCompanyId(
   actorId: string,
   actorRole: UserRole,
 ): Promise<{ ok: true; id: string | null } | { ok: false; error: string }> {
@@ -331,14 +331,15 @@ export async function requestDriverDeactivation(
         where: { email: target.email, status: "ACTIVE" },
         data: { status: "BLOCKED" },
       });
-    });
 
-    // Cancel any pending deactivation requests for this driver
-    await cancelPendingDeactivationRequests(
-      driverUserId,
-      actorId,
-      "Cancelado: motorista desativado diretamente por gerente/admin",
-    );
+      // Cancel any pending deactivation requests for this driver (inside transaction for atomicity)
+      await cancelPendingDeactivationRequests(
+        driverUserId,
+        actorId,
+        "Cancelado: motorista desativado diretamente por gerente/admin",
+        tx,
+      );
+    });
 
     await writeAuditLog({
       eventType: "USER_DEACTIVATED",
@@ -549,6 +550,7 @@ export async function cancelPendingDeactivationRequests(
 export async function listPendingDeactivationRequests() {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Não autenticado.");
+  const actorId = session.user.id;
   const actorRole = session.user.role as UserRole;
 
   if (!roleIsAtLeast(actorRole, "ACCOUNT_MANAGER")) {
@@ -558,8 +560,19 @@ export async function listPendingDeactivationRequests() {
     }
   }
 
+  // Resolve actor's transport company for read isolation
+  const access = await resolveTransportCompanyId(actorId, actorRole);
+  if (!access.ok) {
+    throw new Error(access.error);
+  }
+
+  const where: Record<string, unknown> = { status: "PENDING" };
+  if (access.id) {
+    where.driver = { transportCompanyId: access.id };
+  }
+
   const requests = await prisma.deactivationRequest.findMany({
-    where: { status: "PENDING" },
+    where,
     select: {
       id: true,
       reason: true,
@@ -576,9 +589,22 @@ export async function listPendingDeactivationRequests() {
 export async function listResolvedDeactivationRequests() {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Não autenticado.");
+  const actorId = session.user.id;
+  const actorRole = session.user.role as UserRole;
+
+  // Resolve actor's transport company for read isolation
+  const access = await resolveTransportCompanyId(actorId, actorRole);
+  if (!access.ok) {
+    throw new Error(access.error);
+  }
+
+  const where: Record<string, unknown> = { status: { in: ["APPROVED", "REJECTED"] } };
+  if (access.id) {
+    where.driver = { transportCompanyId: access.id };
+  }
 
   const requests = await prisma.deactivationRequest.findMany({
-    where: { status: { in: ["APPROVED", "REJECTED"] } },
+    where,
     select: {
       id: true,
       status: true,
@@ -597,6 +623,10 @@ export async function listResolvedDeactivationRequests() {
   return requests;
 }
 
-export async function getPendingDeactivationCount(): Promise<number> {
-  return prisma.deactivationRequest.count({ where: { status: "PENDING" } });
+export async function getPendingDeactivationCount(transportCompanyId?: string | null): Promise<number> {
+  const where: Record<string, unknown> = { status: "PENDING" };
+  if (transportCompanyId) {
+    where.driver = { transportCompanyId };
+  }
+  return prisma.deactivationRequest.count({ where });
 }

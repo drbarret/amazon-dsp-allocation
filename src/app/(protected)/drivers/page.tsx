@@ -1,7 +1,7 @@
 import { requireRole } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import { DriversClient } from "./client";
-import { getPendingDeactivationCount } from "./actions";
+import { getPendingDeactivationCount, resolveTransportCompanyId } from "./actions";
 import type { UserRole } from "@/generated/prisma";
 
 export const dynamic = "force-dynamic";
@@ -32,10 +32,22 @@ export default async function DriversPage(props: {
   const searchParams = await props.searchParams;
   const statusFilter = searchParams?.status ?? "active";
 
+  // Resolve actor's transport company for read isolation
+  const access = await resolveTransportCompanyId(session.user.id, currentActorRole);
+  if (!access.ok) {
+    throw new Error(access.error);
+  }
+
   const whereClause: Record<string, unknown> = {
     role: "DRIVER",
     driverProfile: { isNot: null },
   };
+
+  // Filter by transport company: SUPERVISOR sees only own company;
+  // ADMIN/ACCOUNT_MANAGER without company see all; with company see only own.
+  if (access.id) {
+    whereClause.transportCompanyId = access.id;
+  }
 
   if (statusFilter === "active") {
     whereClause.active = true;
@@ -96,7 +108,7 @@ export default async function DriversPage(props: {
     deactivatedByRole: d.deactivatedByRole,
   }));
 
-  const pendingCount = await getPendingDeactivationCount();
+  const pendingCount = await getPendingDeactivationCount(access.id);
 
   return (
     <DriversClient

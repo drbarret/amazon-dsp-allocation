@@ -154,23 +154,28 @@ export async function deactivateUser(targetUserId: string) {
   }
 
   // Layer 2: deactivate User, recording who deactivated (for the reactivation rule)
-  await prisma.user.update({
-    where: { id: targetUserId },
-    data: { active: false, deactivatedById: actorId, deactivatedByRole: actorRole },
-  });
-
-  // Cancel any pending deactivation requests for this driver
-  await cancelPendingDeactivationRequests(
-    targetUserId,
-    actorId,
-    "Cancelado: motorista desativado diretamente via /admin/users",
-  );
-
   // Layer 1: block AllowedEmail (set ACTIVE → BLOCKED)
-  // Only touch it if it exists and is ACTIVE — don't overwrite REVOKED.
-  await prisma.allowedEmail.updateMany({
-    where: { email: target.email, status: "ACTIVE" },
-    data: { status: "BLOCKED" },
+  // Cancel any pending deactivation requests for this driver
+  // All in one transaction for atomicity
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: targetUserId },
+      data: { active: false, deactivatedById: actorId, deactivatedByRole: actorRole },
+    });
+
+    // Only touch it if it exists and is ACTIVE — don't overwrite REVOKED.
+    await tx.allowedEmail.updateMany({
+      where: { email: target.email, status: "ACTIVE" },
+      data: { status: "BLOCKED" },
+    });
+
+    // Cancel any pending deactivation requests for this driver (inside transaction)
+    await cancelPendingDeactivationRequests(
+      targetUserId,
+      actorId,
+      "Cancelado: motorista desativado diretamente via /admin/users",
+      tx,
+    );
   });
 
   await writeAuditLog({
@@ -226,23 +231,28 @@ export async function reactivateUser(targetUserId: string) {
   }
 
   // Layer 2: reactivate User, clearing the deactivation record
-  await prisma.user.update({
-    where: { id: targetUserId },
-    data: { active: true, deactivatedById: null, deactivatedByRole: null },
-  });
-
-  // Cancel any pending deactivation requests for this driver
-  await cancelPendingDeactivationRequests(
-    targetUserId,
-    actorId,
-    "Cancelado: motorista reativado diretamente via /admin/users",
-  );
-
   // Layer 1: reactivate AllowedEmail (set BLOCKED → ACTIVE)
-  // Only touch it if it exists and is BLOCKED — don't overwrite REVOKED.
-  await prisma.allowedEmail.updateMany({
-    where: { email: target.email, status: "BLOCKED" },
-    data: { status: "ACTIVE" },
+  // Cancel any pending deactivation requests for this driver
+  // All in one transaction for atomicity
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: targetUserId },
+      data: { active: true, deactivatedById: null, deactivatedByRole: null },
+    });
+
+    // Only touch it if it exists and is BLOCKED — don't overwrite REVOKED.
+    await tx.allowedEmail.updateMany({
+      where: { email: target.email, status: "BLOCKED" },
+      data: { status: "ACTIVE" },
+    });
+
+    // Cancel any pending deactivation requests for this driver (inside transaction)
+    await cancelPendingDeactivationRequests(
+      targetUserId,
+      actorId,
+      "Cancelado: motorista reativado diretamente via /admin/users",
+      tx,
+    );
   });
 
   await writeAuditLog({

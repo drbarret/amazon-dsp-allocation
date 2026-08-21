@@ -381,21 +381,114 @@ export function DriversClient({
         />
       </div>
 
-      <DataTable
-        columns={columns}
-        rows={filtered}
-        dense
-        ariaLabel="Motoristas cadastrados"
-        empty={{
-          icon: UsersIcon,
-          title: search
-            ? "Nenhum motorista encontrado para esta busca"
-            : "Nenhum motorista cadastrado",
-          hint: search
-            ? "Limpe a busca ou ajuste os critérios."
-            : "Os motoristas aparecem aqui após concluírem o cadastro.",
-        }}
-      />
+      {/* Desktop: table view */}
+      <div className="hidden md:block">
+        <DataTable
+          columns={columns}
+          rows={filtered}
+          dense
+          ariaLabel="Motoristas cadastrados"
+          empty={{
+            icon: UsersIcon,
+            title: search
+              ? "Nenhum motorista encontrado para esta busca"
+              : "Nenhum motorista cadastrado",
+            hint: search
+              ? "Limpe a busca ou ajuste os critérios."
+              : "Os motoristas aparecem aqui após concluírem o cadastro.",
+          }}
+        />
+      </div>
+
+      {/* Mobile: card view */}
+      <div className="space-y-3 md:hidden">
+        {filtered.length === 0 ? (
+          <div className="rounded-xl border border-border bg-card p-8 text-center shadow-sm">
+            <UsersIcon className="mx-auto mb-3 size-10 text-muted-foreground" />
+            <p className="font-medium text-foreground">
+              {search
+                ? "Nenhum motorista encontrado para esta busca"
+                : "Nenhum motorista cadastrado"}
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {search
+                ? "Limpe a busca ou ajuste os critérios."
+                : "Os motoristas aparecem aqui após concluírem o cadastro."}
+            </p>
+          </div>
+        ) : (
+          filtered.map((driver) => (
+            <div
+              key={driver.userId}
+              className="rounded-xl border border-border bg-card p-4 shadow-sm"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-medium text-foreground">{driver.name}</div>
+                  <div className="truncate text-xs text-muted-foreground">{driver.email}</div>
+                </div>
+                <div className="shrink-0">
+                  {driver.active ? (
+                    <StatusPill tone="success">Ativo</StatusPill>
+                  ) : (
+                    <StatusPill tone="danger">Inativo</StatusPill>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                {driver.phoneFormatted && (
+                  <span>{driver.phoneFormatted}</span>
+                )}
+                {driver.transporterId && (
+                  <span className="font-mono">{driver.transporterId}</span>
+                )}
+                <span>{VEHICLE_LABELS[driver.vehicleType] ?? driver.vehicleType}</span>
+                {(driver.worksCiclo1 || driver.worksCiclo2) && (
+                  <span>
+                    {[driver.worksCiclo1 && "M", driver.worksCiclo2 && "T"].filter(Boolean).join("/")}
+                  </span>
+                )}
+                {driver.hasGnv && <StatusPill tone="info">GNV</StatusPill>}
+                {driver.isTrusted && <StarIcon className="size-3 fill-yellow-400 text-yellow-400" />}
+              </div>
+
+              <div className="mt-3 flex items-center gap-2 border-t border-border pt-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openEditModal(driver)}
+                  className="flex-1"
+                >
+                  <PencilIcon className="mr-1 size-3" />
+                  Editar
+                </Button>
+                {driver.active ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openDeactivationModal(driver)}
+                    disabled={isPending}
+                    className="flex-1"
+                  >
+                    Desativar
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleReactivate(driver)}
+                    disabled={isPending}
+                    className="flex-1"
+                  >
+                    Reativar
+                  </Button>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
 
       <p className="text-xs text-muted-foreground">
         Mostrando {filtered.length} de {drivers.length} motoristas

@@ -99,9 +99,10 @@ describe("DriversClient — render", () => {
       screen.getByPlaceholderText(/Buscar por nome/),
     ).toBeInTheDocument();
 
-    expect(screen.getByText("Rafael Almeida")).toBeInTheDocument();
-    expect(screen.getByText("Beatriz Nogueira")).toBeInTheDocument();
-    expect(screen.getByText("Carlos Eduardo Lima")).toBeInTheDocument();
+    // Both table and card views render driver names (responsive layout)
+    expect(screen.getAllByText("Rafael Almeida").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Beatriz Nogueira").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Carlos Eduardo Lima").length).toBeGreaterThanOrEqual(1);
 
     // Contagem no rodapé
     expect(screen.getByText(/Mostrando 3 de 3 motoristas/)).toBeInTheDocument();
@@ -110,7 +111,8 @@ describe("DriversClient — render", () => {
   it("vazio: sem motoristas mostra EmptyState com orientação", () => {
     render(<DriversClient {...defaultProps} drivers={[]} />);
 
-    expect(screen.getByText("Nenhum motorista cadastrado")).toBeInTheDocument();
+    // Both table empty state and card empty state render the same text
+    expect(screen.getAllByText("Nenhum motorista cadastrado").length).toBeGreaterThanOrEqual(1);
   });
 
   it("busca sem resultado: EmptyState orienta a limpar a busca", () => {
@@ -119,9 +121,10 @@ describe("DriversClient — render", () => {
     const input = screen.getByPlaceholderText(/Buscar por nome/);
     fireEvent.change(input, { target: { value: "zzzznada" } });
 
+    // Both table empty state and card empty state render the same text
     expect(
-      screen.getByText("Nenhum motorista encontrado para esta busca"),
-    ).toBeInTheDocument();
+      screen.getAllByText("Nenhum motorista encontrado para esta busca").length,
+    ).toBeGreaterThanOrEqual(1);
   });
 
   it("tabela tem aria-label para leitores de tela", () => {

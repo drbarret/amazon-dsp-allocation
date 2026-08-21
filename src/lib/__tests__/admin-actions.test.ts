@@ -44,6 +44,10 @@ const mockPrisma = {
     findMany: vi.fn().mockResolvedValue([]),
     updateMany: vi.fn().mockResolvedValue({ count: 0 }),
   },
+  $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+    // Simulate transaction by passing the mock itself as the tx client
+    return fn(mockPrisma);
+  }),
 };
 
 vi.mock("@/lib/prisma", () => ({
