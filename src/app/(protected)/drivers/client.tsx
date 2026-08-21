@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useEffect } from "react";
+import { useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -48,22 +48,14 @@ export function DriversClient({
   const searchParams = useSearchParams();
   const [search, setSearch] = useState("");
   const [isPending, startTransition] = useTransition();
-  const [statusFilter, setStatusFilter] = useState(initialStatusFilter);
+  const statusFilter = searchParams.get("status") ?? initialStatusFilter;
 
   // Edit modal state
   const [editingDriver, setEditingDriver] = useState<DriverRow | null>(null);
   const [editForm, setEditForm] = useState<Record<string, unknown>>({});
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    const current = searchParams.get("status") ?? "active";
-    if (current !== statusFilter) {
-      setStatusFilter(current);
-    }
-  }, [searchParams, statusFilter]);
-
   function handleStatusChange(newStatus: string) {
-    setStatusFilter(newStatus);
     const params = new URLSearchParams(window.location.search);
     params.set("status", newStatus);
     router.push(`?${params.toString()}`);
