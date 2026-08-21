@@ -33,6 +33,7 @@ const WEEK2_ID = "e2e-vagas-week2";
 const SUP_EMAIL = "e2e-vagas-sup@instalog.com.br";
 const DRIVER_EMAIL = "e2e-vagas-driver@instalog.com.br";
 const COOKIE = "authjs.session-token";
+const CARD_SELECTOR = '[data-testid="vacancy-block-card"]';
 
 // Block IDs will be created during setup
 let BLOCK_IDS: string[] = [];
@@ -214,21 +215,43 @@ test.describe("Vagas E2E", () => {
   });
 
   test.beforeEach(async () => {
-    // Restore fresh vacancy data before each test to ensure isolation
+    // Restore fresh vacancy data and blocks before each test to ensure isolation
     if (!client) return;
 
-    // Clean existing vacancies for our test weeks
+    // Clean existing vacancies and blocks for this transport company
     await client.query(
-      `DELETE FROM "block_daily_vacancies" WHERE "dispatchWeekId" = ANY($1)`,
-      [[WEEK1_ID, WEEK2_ID]],
+      `DELETE FROM "block_daily_vacancies" WHERE "vacancyBlockId" IN (SELECT id FROM "vacancy_blocks" WHERE "transportCompanyId" = $1)`,
+      [TCID],
     );
+    await client.query(`DELETE FROM "vacancy_blocks" WHERE "transportCompanyId" = $1`, [TCID]);
+
+    // Recreate 4 vacancy blocks with varied data
+    const blocks = [
+      { sortOrder: 1, name: "Cargo Van (Small) R2.0 - Inside Natural Gas - BR - Ciclo 1", types: "{GNV}", cycle: 1 },
+      { sortOrder: 2, name: "Cargo Van (Small) R2.0 - BR - Ciclo 1", types: "{CARGO_VAN}", cycle: 1 },
+      { sortOrder: 3, name: "Standard Parcel - Small Van - BR - Ciclo 2", types: "{CARGO_VAN,GNV}", cycle: 2 },
+      { sortOrder: 4, name: "Same Day Passenger Car - Ciclo 2", types: "{PASSENGER}", cycle: 2 },
+    ];
+
+    BLOCK_IDS = [];
+    for (const block of blocks) {
+      const result = await client.query(
+        `INSERT INTO "vacancy_blocks"
+          ("id", "transportCompanyId", "name", "cycle", "eligibleVehicleTypes", "active", "sortOrder", "createdAt", "updatedAt")
+         VALUES
+          (gen_random_uuid(), $1, $2, $3, $4::"VehicleEligibility"[], true, $5, now(), now())
+         RETURNING id`,
+        [TCID, block.name, block.cycle, block.types, block.sortOrder],
+      );
+      BLOCK_IDS.push(result.rows[0].id);
+    }
 
     // Insert fresh varied daily vacancies for week 1
     const counts = [
-      [3, 5, 4, 6, 5, 4, 2], // block 1: total 29
-      [2, 4, 3, 5, 4, 3, 1], // block 2: total 22
-      [1, 3, 2, 4, 3, 2, 0], // block 3: total 15
-      [0, 2, 1, 3, 2, 1, 0], // block 4: total 9
+      [3, 5, 4, 6, 5, 4, 2], // block 0: total 29
+      [2, 4, 3, 5, 4, 3, 1], // block 1: total 22
+      [1, 3, 2, 4, 3, 2, 0], // block 2: total 15
+      [0, 2, 1, 3, 2, 1, 0], // block 3: total 9
     ];
 
     for (let b = 0; b < 4; b++) {
@@ -251,12 +274,6 @@ test.describe("Vagas E2E", () => {
         [WEEK2_ID, BLOCK_IDS[0], day, 1, SUP_ID],
       );
     }
-
-    // Reset eligibility of block 0 back to GNV only
-    await client.query(
-      `UPDATE "vacancy_blocks" SET "eligibleVehicleTypes" = $1::"VehicleEligibility"[] WHERE id = $2`,
-      ["{GNV}", BLOCK_IDS[0]],
-    );
   });
 
   test.afterAll(async () => {
@@ -318,15 +335,15 @@ test.describe("Vagas E2E", () => {
       await page.waitForTimeout(1000);
 
       // Check we have 4 blocks
-      const cards = await page.locator(".rounded-xl.border").count();
+      const cards = await page.locator(CARD_SELECTOR).count();
       expect(cards).toBe(4);
 
       // Check first block has correct total (29)
-      const firstCardTotal = await page.locator(".rounded-xl.border").first().locator("text=/\\d+ vaga/").textContent();
+      const firstCardTotal = await page.locator(CARD_SELECTOR).first().locator("text=/\\d+ vaga/").textContent();
       expect(firstCardTotal).toContain("29");
 
       // Check badges are present
-      const firstCard = page.locator(".rounded-xl.border").first();
+      const firstCard = page.locator(CARD_SELECTOR).first();
       await expect(firstCard.locator("text=GNV")).toBeVisible();
       await expect(firstCard.locator('div:has-text("Ciclo 1")').nth(0)).toBeVisible();
 
@@ -353,13 +370,13 @@ test.describe("Vagas E2E", () => {
       await page.waitForTimeout(1000);
 
       // Get first input in first card
-      const firstInput = page.locator(".rounded-xl.border").first().locator('input[type="number"]').first();
+      const firstInput = page.locator(CARD_SELECTOR).first().locator('input[type="number"]').first();
 
       // Change the value
       await firstInput.fill("99");
 
       // Click save button
-      const saveBtn = page.locator(".rounded-xl.border").first().locator("button:has-text('Salvar')");
+      const saveBtn = page.locator(CARD_SELECTOR).first().locator("button:has-text('Salvar')");
       await saveBtn.click();
 
       // Wait for save feedback
@@ -374,7 +391,7 @@ test.describe("Vagas E2E", () => {
       await page.waitForTimeout(1000);
 
       // Check value persisted
-      const reloadedInput = page.locator(".rounded-xl.border").first().locator('input[type="number"]').first();
+      const reloadedInput = page.locator(CARD_SELECTOR).first().locator('input[type="number"]').first();
       const reloadedValue = await reloadedInput.inputValue();
       expect(reloadedValue).toBe("99");
     } finally {
@@ -388,7 +405,7 @@ test.describe("Vagas E2E", () => {
       await page.goto(`${BASE_URL}/vagas`, { waitUntil: "networkidle", timeout: 30_000 });
       await page.waitForSelector("text=Cargo Van", { timeout: 10_000 });
 
-      const firstCard = page.locator(".rounded-xl.border").first();
+      const firstCard = page.locator(CARD_SELECTOR).first();
 
       // Fill all 7 inputs with known values: 1,2,3,4,5,6,7 = 28
       const inputs = firstCard.locator('input[type="number"]');
@@ -404,6 +421,84 @@ test.describe("Vagas E2E", () => {
     }
   });
 
+  test("daily header totals sum all active blocks and update on edit", async ({ browser }) => {
+    const page = await createPageWithAuth(browser, supToken);
+    try {
+      await page.goto(`${BASE_URL}/vagas`, { waitUntil: "networkidle", timeout: 30_000 });
+      await page.waitForSelector("text=Cargo Van", { timeout: 10_000 });
+
+      // Select WK-VAGAS-1 explicitly to ensure consistent data
+      await page.locator("select").first().selectOption(WEEK1_ID);
+      await page.waitForTimeout(1000);
+
+      const cards = page.locator(CARD_SELECTOR);
+      const firstCard = cards.nth(0);
+      const secondCard = cards.nth(1);
+
+      // Zero out all blocks first to isolate the daily total calculation
+      for (let c = 0; c < 4; c++) {
+        const card = cards.nth(c);
+        for (let i = 0; i < 7; i++) {
+          await card.locator('input[type="number"]').nth(i).fill("0");
+        }
+        await card.locator("button:has-text('Salvar')").click();
+        await page.waitForSelector("text=Salvo", { timeout: 10_000 });
+      }
+
+      // Fill first two blocks with known values
+      // Block 0: [1,2,3,4,5,6,7]
+      for (let i = 0; i < 7; i++) {
+        await firstCard.locator('input[type="number"]').nth(i).fill(String(i + 1));
+      }
+      // Block 1: [2,3,4,5,6,7,8]
+      for (let i = 0; i < 7; i++) {
+        await secondCard.locator('input[type="number"]').nth(i).fill(String(i + 2));
+      }
+
+      // Save both blocks
+      await firstCard.locator("button:has-text('Salvar')").click();
+      await page.waitForSelector("text=Salvo", { timeout: 10_000 });
+      await secondCard.locator("button:has-text('Salvar')").click();
+      await page.waitForSelector("text=Salvo", { timeout: 10_000 });
+
+      // Header totals should be [3,5,7,9,11,13,15]
+      for (let i = 0; i < 7; i++) {
+        const expected = String(i * 2 + 3);
+        await expect(page.locator(`[data-testid="daily-total-${i}"]`)).toHaveText(expected);
+      }
+
+      // Edit first block day 0 from 1 to 10 → header day 0 becomes 12
+      await firstCard.locator('input[type="number"]').first().fill("10");
+      await firstCard.locator("button:has-text('Salvar')").click();
+      await page.waitForSelector("text=Salvo", { timeout: 10_000 });
+
+      await expect(page.locator('[data-testid="daily-total-0"]')).toHaveText("12");
+    } finally {
+      await page.context().close();
+    }
+  });
+
+  test("daily header totals reflect server data on initial load", async ({ browser }) => {
+    const page = await createPageWithAuth(browser, supToken);
+    try {
+      await page.goto(`${BASE_URL}/vagas`, { waitUntil: "networkidle", timeout: 30_000 });
+      await page.waitForSelector("text=Cargo Van", { timeout: 10_000 });
+
+      // Select WK-VAGAS-1 explicitly to ensure consistent seeded data
+      await page.locator("select").first().selectOption(WEEK1_ID);
+      await page.waitForTimeout(1000);
+
+      // Initial daily totals should match seeded data without any local edits/saves:
+      // [3+2+1+0, 5+4+3+2, 4+3+2+1, 6+5+4+3, 5+4+3+2, 4+3+2+1, 2+1+0+0]
+      const expected = ["6", "14", "10", "18", "14", "10", "3"];
+      for (let i = 0; i < 7; i++) {
+        await expect(page.locator(`[data-testid="daily-total-${i}"]`)).toHaveText(expected[i]);
+      }
+    } finally {
+      await page.context().close();
+    }
+  });
+
   test("Editar Bloco changes eligibility and persists after reload", async ({ browser }) => {
     test.setTimeout(120_000);
     const page = await createPageWithAuth(browser, supToken);
@@ -412,7 +507,7 @@ test.describe("Vagas E2E", () => {
       await page.waitForSelector("text=Cargo Van", { timeout: 10_000 });
 
       // Click Editar Bloco on first card
-      await page.locator(".rounded-xl.border").first().locator("button:has-text('Editar Bloco')").click();
+      await page.locator(CARD_SELECTOR).first().locator("button:has-text('Editar Bloco')").click();
 
       // Wait for dialog heading
       await page.waitForSelector('h2:has-text("Editar Bloco")', { timeout: 5_000 });
@@ -445,7 +540,7 @@ test.describe("Vagas E2E", () => {
       await page.waitForSelector("text=Cargo Van", { timeout: 10_000 });
 
       // First card should now show Passenger in addition to GNV
-      const badgeText = await page.locator(".rounded-xl.border").first().locator(".break-all").first().textContent();
+      const badgeText = await page.locator(CARD_SELECTOR).first().locator(".break-all").first().textContent();
       expect(badgeText).toContain("Passenger");
     } finally {
       await page.context().close();
@@ -463,7 +558,7 @@ test.describe("Vagas E2E", () => {
       await weekSelect.selectOption(WEEK1_ID);
       await page.waitForTimeout(1000);
 
-      const firstCardTotal = await page.locator(".rounded-xl.border").first().locator("text=/\\d+ vaga/").textContent();
+      const firstCardTotal = await page.locator(CARD_SELECTOR).first().locator("text=/\\d+ vaga/").textContent();
       expect(firstCardTotal).toContain("29");
 
       // Change to week 2
@@ -471,7 +566,7 @@ test.describe("Vagas E2E", () => {
       await page.waitForTimeout(1000);
 
       // First block in week 2 should have total 7 (all 1s)
-      const newTotal = await page.locator(".rounded-xl.border").first().locator("text=/\\d+ vaga/").textContent();
+      const newTotal = await page.locator(CARD_SELECTOR).first().locator("text=/\\d+ vaga/").textContent();
       expect(newTotal).toContain("7");
     } finally {
       await page.context().close();
@@ -495,7 +590,7 @@ test.describe("Vagas E2E", () => {
         });
 
         // Verify cards are visible
-        const cards = await page.locator(".rounded-xl.border").count();
+        const cards = await page.locator(CARD_SELECTOR).count();
         expect(cards).toBe(4);
       } finally {
         await page.context().close();
@@ -510,7 +605,7 @@ test.describe("Vagas E2E", () => {
       await page.waitForSelector("text=Cargo Van", { timeout: 10_000 });
 
       // Open edit dialog
-      const editBtn = page.locator(".rounded-xl.border").first().locator("button:has-text('Editar Bloco')");
+      const editBtn = page.locator(CARD_SELECTOR).first().locator("button:has-text('Editar Bloco')");
       await editBtn.click();
       await page.waitForSelector("text=Editar Bloco", { timeout: 5_000 });
 
@@ -521,6 +616,171 @@ test.describe("Vagas E2E", () => {
       });
     } finally {
       await page.context().close();
+    }
+  });
+
+  test("add block via dialog and verify card appears", async ({ browser }) => {
+    const page = await createPageWithAuth(browser, supToken);
+    try {
+      await page.goto(`${BASE_URL}/vagas`, { waitUntil: "networkidle", timeout: 30_000 });
+      await page.waitForSelector("text=Cargo Van", { timeout: 10_000 });
+
+      // Ensure week 1 is selected
+      await page.locator("select").first().selectOption(WEEK1_ID);
+      await page.waitForTimeout(1000);
+
+      // Open add dialog
+      await page.locator('[data-testid="add-block-button"]').click();
+      await page.waitForSelector('h2:has-text("Adicionar Bloco")', { timeout: 5_000 });
+
+      // Fill form
+      await page.locator('[data-testid="create-block-name"]').fill("Novo Bloco E2E");
+      await page.locator('[data-testid="create-block-cycle"]').selectOption("2");
+      await page.locator('[data-testid="create-eligibility-GNV"]').click();
+      await page.locator('[data-testid="create-block-shift"]').fill("Ciclo 2 - Tarde");
+
+      // Save
+      await page.locator('[data-testid="create-block-submit"]').click();
+
+      // Wait for dialog to close and new card to appear
+      await page.waitForSelector('h2:has-text("Adicionar Bloco")', { state: "hidden", timeout: 10_000 });
+      await page.waitForSelector("text=Novo Bloco E2E", { timeout: 10_000 });
+
+      const cards = await page.locator(CARD_SELECTOR).count();
+      expect(cards).toBe(5);
+
+      // New card should have correct badges
+      const newCard = page.locator(CARD_SELECTOR).filter({ hasText: "Novo Bloco E2E" });
+      await expect(newCard.locator("text=GNV")).toBeVisible();
+      await expect(newCard.locator("text=Ciclo 2")).toBeVisible();
+
+      // Daily totals should not change (new block has 0 vacancies)
+      for (let i = 0; i < 7; i++) {
+        const total = await page.locator(`[data-testid="daily-total-${i}"]`).textContent();
+        expect(total?.trim()).toBe(String([6, 14, 10, 18, 14, 10, 3][i]));
+      }
+    } finally {
+      await page.context().close();
+    }
+  });
+
+  test("remove block via edit dialog and verify daily totals recalculate", async ({ browser }) => {
+    const page = await createPageWithAuth(browser, supToken);
+    try {
+      await page.goto(`${BASE_URL}/vagas`, { waitUntil: "networkidle", timeout: 30_000 });
+      await page.waitForSelector("text=Cargo Van", { timeout: 10_000 });
+
+      await page.locator("select").first().selectOption(WEEK1_ID);
+      await page.waitForTimeout(1000);
+
+      // Open remove dialog for the first block
+      await page.locator(CARD_SELECTOR).first().locator("button:has-text('Editar Bloco')").click();
+      await page.waitForSelector('h2:has-text("Editar Bloco")', { timeout: 5_000 });
+      await page.locator('[data-testid="delete-block-button"]').click();
+      await page.waitForSelector('h2:has-text("Remover Bloco")', { timeout: 5_000 });
+
+      // Confirm removal
+      await page.locator('[data-testid="delete-block-confirm"]').click();
+
+      // Wait for dialog to close and card to disappear
+      await page.waitForSelector('h2:has-text("Remover Bloco")', { state: "hidden", timeout: 10_000 });
+      await page.waitForTimeout(1000);
+
+      const cards = await page.locator(CARD_SELECTOR).count();
+      expect(cards).toBe(3);
+
+      // Daily totals should be recalculated without block 0 values [3,5,4,6,5,4,2]
+      // Original totals: [6,14,10,18,14,10,3]
+      for (let i = 0; i < 7; i++) {
+        const expected = String([3, 9, 6, 12, 9, 6, 1][i]);
+        await expect(page.locator(`[data-testid="daily-total-${i}"]`)).toHaveText(expected);
+      }
+    } finally {
+      await page.context().close();
+    }
+  });
+
+  test("create block validation shows errors for missing name and eligibility", async ({ browser }) => {
+    const page = await createPageWithAuth(browser, supToken);
+    try {
+      await page.goto(`${BASE_URL}/vagas`, { waitUntil: "networkidle", timeout: 30_000 });
+      await page.waitForSelector("text=Cargo Van", { timeout: 10_000 });
+
+      await page.locator("select").first().selectOption(WEEK1_ID);
+      await page.waitForTimeout(1000);
+
+      // Open add dialog
+      await page.locator('[data-testid="add-block-button"]').click();
+      await page.waitForSelector('h2:has-text("Adicionar Bloco")', { timeout: 5_000 });
+
+      // Try to save without name and without eligibility
+      await page.locator('[data-testid="create-block-name"]').fill("");
+      await page.locator('[data-testid="create-block-submit"]').click();
+
+      // Errors should be visible
+      await expect(page.locator('[data-testid="create-name-error"]')).toBeVisible();
+      await expect(page.locator('[data-testid="create-eligibility-error"]')).toBeVisible();
+
+      // Dialog should remain open
+      await expect(page.locator('h2:has-text("Adicionar Bloco")')).toBeVisible();
+    } finally {
+      await page.context().close();
+    }
+  });
+
+  test("screenshots of add and remove dialogs at desktop and mobile", async ({ browser }) => {
+    const desktopPage = await createPageWithAuth(browser, supToken, 1280, 800);
+    try {
+      await desktopPage.goto(`${BASE_URL}/vagas`, { waitUntil: "networkidle", timeout: 30_000 });
+      await desktopPage.waitForSelector("text=Cargo Van", { timeout: 10_000 });
+      await desktopPage.locator("select").first().selectOption(WEEK1_ID);
+      await desktopPage.waitForTimeout(1000);
+
+      // Screenshot add dialog desktop
+      await desktopPage.locator('[data-testid="add-block-button"]').click();
+      await desktopPage.waitForSelector('h2:has-text("Adicionar Bloco")', { timeout: 5_000 });
+      await desktopPage.waitForTimeout(300);
+      await desktopPage.screenshot({ path: "e2e/screenshots/vagas-add-dialog-desktop.png", fullPage: false });
+      await desktopPage.locator('[data-testid="create-block-cancel"]').click();
+      await desktopPage.waitForSelector('h2:has-text("Adicionar Bloco")', { state: "hidden", timeout: 5_000 });
+
+      // Screenshot remove confirmation dialog desktop
+      await desktopPage.locator(CARD_SELECTOR).first().locator("button:has-text('Editar Bloco')").click();
+      await desktopPage.waitForSelector('h2:has-text("Editar Bloco")', { timeout: 5_000 });
+      await desktopPage.locator('[data-testid="delete-block-button"]').click();
+      await desktopPage.waitForSelector('h2:has-text("Remover Bloco")', { timeout: 5_000 });
+      await desktopPage.waitForTimeout(300);
+      await desktopPage.screenshot({ path: "e2e/screenshots/vagas-remove-dialog-desktop.png", fullPage: false });
+      await desktopPage.locator('[data-testid="delete-block-cancel"]').click();
+    } finally {
+      await desktopPage.context().close();
+    }
+
+    const mobilePage = await createPageWithAuth(browser, supToken, 390, 844);
+    try {
+      await mobilePage.goto(`${BASE_URL}/vagas`, { waitUntil: "networkidle", timeout: 30_000 });
+      await mobilePage.waitForSelector("text=Cargo Van", { timeout: 10_000 });
+      await mobilePage.locator("select").first().selectOption(WEEK1_ID);
+      await mobilePage.waitForTimeout(1000);
+
+      // Screenshot add dialog mobile
+      await mobilePage.locator('[data-testid="add-block-button"]').click();
+      await mobilePage.waitForSelector('h2:has-text("Adicionar Bloco")', { timeout: 5_000 });
+      await mobilePage.waitForTimeout(300);
+      await mobilePage.screenshot({ path: "e2e/screenshots/vagas-add-dialog-mobile.png", fullPage: false });
+      await mobilePage.locator('[data-testid="create-block-cancel"]').click();
+      await mobilePage.waitForSelector('h2:has-text("Adicionar Bloco")', { state: "hidden", timeout: 5_000 });
+
+      // Screenshot remove confirmation dialog mobile
+      await mobilePage.locator(CARD_SELECTOR).first().locator("button:has-text('Editar Bloco')").click();
+      await mobilePage.waitForSelector('h2:has-text("Editar Bloco")', { timeout: 5_000 });
+      await mobilePage.locator('[data-testid="delete-block-button"]').click();
+      await mobilePage.waitForSelector('h2:has-text("Remover Bloco")', { timeout: 5_000 });
+      await mobilePage.waitForTimeout(300);
+      await mobilePage.screenshot({ path: "e2e/screenshots/vagas-remove-dialog-mobile.png", fullPage: false });
+      await mobilePage.locator('[data-testid="delete-block-cancel"]').click();
+    } finally {
+      await mobilePage.context().close();
     }
   });
 });

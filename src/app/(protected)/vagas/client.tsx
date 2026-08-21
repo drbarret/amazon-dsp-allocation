@@ -21,6 +21,8 @@ import {
   PencilIcon,
   CheckIcon,
   AlertCircleIcon,
+  PlusIcon,
+  Trash2Icon,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { WeekSelector } from "@/components/week-selector";
@@ -29,6 +31,8 @@ import {
   listVacancyBlocks,
   saveBlockWeek,
   updateVacancyBlock,
+  createVacancyBlock,
+  deleteVacancyBlock,
   type VacancyBlockRow,
 } from "./actions";
 import type { UserRole, VehicleEligibility } from "@/generated/prisma";
@@ -107,6 +111,7 @@ export function VagasClient({
   }, [hasTransportCompany, selectedCompanyId]);
 
   const [blocks, setBlocks] = useState<VacancyBlockRow[]>([]);
+  const [dailyTotals, setDailyTotals] = useState<number[]>(Array(7).fill(0));
   const [loadingBlocks, setLoadingBlocks] = useState(false);
   const [isPending, startTransition] = useTransition();
 
@@ -127,6 +132,23 @@ export function VagasClient({
   });
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
+  // Create block dialog
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    name: "",
+    cycle: 1 as number,
+    shift: "",
+    active: true,
+    eligibleVehicleTypes: [] as VehicleEligibility[],
+  });
+  const [createErrors, setCreateErrors] = useState<Record<string, string>>({});
+  const [isCreating, setIsCreating] = useState(false);
+
+  // Delete confirmation dialog
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [blockToDelete, setBlockToDelete] = useState<VacancyBlockRow | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const selectedWeek = useMemo(
     () => filteredWeeks.find((w) => w.id === selectedWeekId) ?? null,
     [filteredWeeks, selectedWeekId]
@@ -140,6 +162,7 @@ export function VagasClient({
   function loadBlocks(weekId: string) {
     if (!weekId) {
       setBlocks([]);
+      setDailyTotals(Array(7).fill(0));
       setDrafts({});
       setSaveStatuses({});
       return;
@@ -150,6 +173,7 @@ export function VagasClient({
         const result = await listVacancyBlocks(weekId, effectiveTransportCompanyId);
         if (result.success) {
           setBlocks(result.blocks);
+          setDailyTotals(result.dailyTotals);
           // Initialize drafts from server data
           const newDrafts: Record<string, number[]> = {};
           const newStatuses: Record<string, SaveStatus> = {};
@@ -190,6 +214,18 @@ export function VagasClient({
     }));
   }
 
+  // Compute daily totals from current blocks (using saved dailyVacancies)
+  function computeDailyTotals(currentBlocks: VacancyBlockRow[]): number[] {
+    const totals = Array(7).fill(0);
+    for (const b of currentBlocks) {
+      if (!b.active) continue;
+      for (const dv of b.dailyVacancies) {
+        totals[dv.dayOfWeek] += dv.count;
+      }
+    }
+    return totals;
+  }
+
   function handleSaveBlock(block: VacancyBlockRow) {
     const counts = drafts[block.id] ?? Array(7).fill(0);
     setSaveStatuses((prev) => ({ ...prev, [block.id]: "saving" }));
@@ -203,14 +239,16 @@ export function VagasClient({
         );
         if (result.success) {
           setSaveStatuses((prev) => ({ ...prev, [block.id]: "saved" }));
-          // Update blocks total
-          setBlocks((prev) =>
-            prev.map((b) =>
+          // Update blocks total and recompute daily totals
+          setBlocks((prev) => {
+            const updated = prev.map((b) =>
               b.id === block.id
                 ? { ...b, dailyVacancies: counts.map((c, i) => ({ dayOfWeek: i, count: c })), total: counts.reduce((a, b) => a + b, 0) }
                 : b
-            )
-          );
+            );
+            setDailyTotals(computeDailyTotals(updated));
+            return updated;
+          });
           // Clear saved status after 2s
           setTimeout(() => {
             setSaveStatuses((prev) => ({
@@ -307,6 +345,130 @@ export function VagasClient({
     return d.some((v, i) => v !== saved[i]);
   }
 
+  // Shared eligibility toggle (create/edit)
+  function toggleEligibilityInForm<T extends { eligibleVehicleTypes: VehicleEligibility[] }>(
+    setter: React.Dispatch<React.SetStateAction<T>>,
+    type: VehicleEligibility
+  ) {
+    setter((prev) => {
+      const has = prev.eligibleVehicleTypes.includes(type);
+      return {
+        ...prev,
+        eligibleVehicleTypes: has
+          ? prev.eligibleVehicleTypes.filter((t) => t !== type)
+          : [...prev.eligibleVehicleTypes, type],
+      };
+    });
+  }
+
+  function openCreateDialog() {
+    setCreateForm({
+      name: "",
+      cycle: 1,
+      shift: "",
+      active: true,
+      eligibleVehicleTypes: [],
+    });
+    setCreateErrors({});
+    setCreateDialogOpen(true);
+  }
+
+  function validateCreateForm(): boolean {
+    const errors: Record<string, string> = {};
+    const name = createForm.name.trim();
+    if (!name) {
+      errors.name = "Nome do bloco é obrigatório.";
+    }
+    if (createForm.cycle !== 1 && createForm.cycle !== 2) {
+      errors.cycle = "Selecione o ciclo.";
+    }
+    if (createForm.eligibleVehicleTypes.length === 0) {
+      errors.eligibleVehicleTypes = "Selecione pelo menos um tipo de veículo.";
+    }
+    setCreateErrors(errors);
+    return Object.keys(errors).length === 0;
+  }
+
+  function handleCreateBlock() {
+    if (!validateCreateForm()) return;
+    setIsCreating(true);
+    startTransition(async () => {
+      try {
+        const result = await createVacancyBlock(
+          {
+            name: createForm.name.trim(),
+            cycle: createForm.cycle,
+            shift: createForm.shift || null,
+            active: createForm.active,
+            eligibleVehicleTypes: createForm.eligibleVehicleTypes,
+          },
+          effectiveTransportCompanyId
+        );
+        if (result.success && result.block) {
+          toast.success("Bloco criado.");
+          setCreateDialogOpen(false);
+          const newBlock = result.block;
+          setBlocks((prev) => {
+            const updated = [...prev, newBlock].sort((a, b) => a.sortOrder - b.sortOrder);
+            setDailyTotals(computeDailyTotals(updated));
+            return updated;
+          });
+          setDrafts((prev) => ({ ...prev, [newBlock.id]: Array(7).fill(0) }));
+          setSaveStatuses((prev) => ({ ...prev, [newBlock.id]: "idle" }));
+        } else {
+          toast.error(result.error ?? "Erro ao criar bloco.");
+        }
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao criar bloco.");
+      } finally {
+        setIsCreating(false);
+      }
+    });
+  }
+
+  function openDeleteDialog(block: VacancyBlockRow) {
+    setBlockToDelete(block);
+    setDeleteDialogOpen(true);
+  }
+
+  function handleDeleteBlock() {
+    if (!blockToDelete) return;
+    setIsDeleting(true);
+    startTransition(async () => {
+      try {
+        const result = await deleteVacancyBlock(blockToDelete.id, effectiveTransportCompanyId);
+        if (result.success) {
+          toast.success("Bloco removido.");
+          setDeleteDialogOpen(false);
+          setEditDialogOpen(false);
+          setEditingBlock(null);
+          setBlockToDelete(null);
+          setBlocks((prev) => {
+            const updated = prev.filter((b) => b.id !== blockToDelete.id);
+            setDailyTotals(computeDailyTotals(updated));
+            return updated;
+          });
+          setDrafts((prev) => {
+            const next = { ...prev };
+            delete next[blockToDelete.id];
+            return next;
+          });
+          setSaveStatuses((prev) => {
+            const next = { ...prev };
+            delete next[blockToDelete.id];
+            return next;
+          });
+        } else {
+          toast.error(result.error ?? "Erro ao remover bloco.");
+        }
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao remover bloco.");
+      } finally {
+        setIsDeleting(false);
+      }
+    });
+  }
+
   if (!hasTransportCompany && !canSelectCompany) {
     return (
       <div className="space-y-6 p-4 sm:p-6">
@@ -363,6 +525,14 @@ export function VagasClient({
               onChange={setSelectedWeekId}
               disabled={isPending || loadingBlocks}
             />
+            <Button
+              onClick={openCreateDialog}
+              disabled={isPending || loadingBlocks || !selectedWeekId}
+              data-testid="add-block-button"
+            >
+              <PlusIcon className="mr-1.5 size-4" />
+              Adicionar bloco
+            </Button>
           </div>
         }
       />
@@ -371,6 +541,23 @@ export function VagasClient({
         <p className="text-sm text-muted-foreground">
           {selectedWeek.startDate} a {selectedWeek.endDate}
         </p>
+      )}
+
+      {/* Linha de totais diários */}
+      {!loadingBlocks && blocks.length > 0 && (
+        <div className="rounded-xl border border-border bg-muted/30 p-4 shadow-sm sm:p-5">
+          <p className="mb-3 text-sm font-medium text-foreground">Total de vagas por dia:</p>
+          <div className="grid grid-cols-4 gap-2 sm:grid-cols-7 sm:gap-3">
+            {DAY_LABELS.map((label, idx) => (
+              <div key={`total-${label}`} className="flex flex-col items-center gap-1 rounded-lg bg-card p-2 shadow-sm">
+                <span className="text-xs font-medium text-muted-foreground">{label}</span>
+                <span className="text-base font-bold text-foreground sm:text-lg" data-testid={`daily-total-${idx}`}>
+                  {dailyTotals[idx] ?? 0}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {loadingBlocks ? (
@@ -393,6 +580,7 @@ export function VagasClient({
             return (
               <div
                 key={block.id}
+                data-testid="vacancy-block-card"
                 className="rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5"
               >
                 {/* Header do card */}
@@ -592,6 +780,15 @@ export function VagasClient({
           >
             Cancelar
           </Button>
+          <Button
+            variant="destructive"
+            onClick={() => editingBlock && openDeleteDialog(editingBlock)}
+            disabled={isSavingEdit}
+            data-testid="delete-block-button"
+          >
+            <Trash2Icon className="mr-1.5 size-4" />
+            Remover bloco
+          </Button>
           <Button onClick={handleSaveEdit} disabled={isSavingEdit}>
             {isSavingEdit ? (
               <>
@@ -600,6 +797,170 @@ export function VagasClient({
               </>
             ) : (
               "Salvar Alterações"
+            )}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* Dialog Criar Bloco */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogHeader>
+          <DialogTitle>Adicionar Bloco</DialogTitle>
+          <DialogDescription>
+            Preencha os dados do novo bloco de vagas.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="create-name">Nome do bloco</Label>
+            <Input
+              id="create-name"
+              data-testid="create-block-name"
+              value={createForm.name}
+              onChange={(e) =>
+                setCreateForm((prev) => ({ ...prev, name: e.target.value }))
+              }
+              disabled={isCreating}
+            />
+            {createErrors.name && (
+              <p className="text-xs text-destructive" data-testid="create-name-error">{createErrors.name}</p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label>Elegibilidade de Veículo</Label>
+            <div className="flex flex-wrap gap-2">
+              {(["GNV", "CARGO_VAN", "PASSENGER"] as VehicleEligibility[]).map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  data-testid={`create-eligibility-${type}`}
+                  onClick={() =>
+                    toggleEligibilityInForm(setCreateForm, type)
+                  }
+                  disabled={isCreating}
+                  className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                    createForm.eligibleVehicleTypes.includes(type)
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-card text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  {VEHICLE_LABELS[type]}
+                </button>
+              ))}
+            </div>
+            {createErrors.eligibleVehicleTypes && (
+              <p className="text-xs text-destructive" data-testid="create-eligibility-error">
+                {createErrors.eligibleVehicleTypes}
+              </p>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="create-cycle">Ciclo</Label>
+              <select
+                id="create-cycle"
+                data-testid="create-block-cycle"
+                value={createForm.cycle}
+                onChange={(e) =>
+                  setCreateForm((prev) => ({ ...prev, cycle: Number(e.target.value) }))
+                }
+                disabled={isCreating}
+                className="h-9 w-full rounded-lg border border-border bg-card px-3 py-1 text-sm text-foreground shadow-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                <option value={1}>Ciclo 1</option>
+                <option value={2}>Ciclo 2</option>
+              </select>
+              {createErrors.cycle && (
+                <p className="text-xs text-destructive">{createErrors.cycle}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="create-shift">Turno / Escala</Label>
+              <Input
+                id="create-shift"
+                data-testid="create-block-shift"
+                placeholder="Ex.: Ciclo 1 - Manhã"
+                value={createForm.shift}
+                onChange={(e) =>
+                  setCreateForm((prev) => ({ ...prev, shift: e.target.value }))
+                }
+                disabled={isCreating}
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="create-active"
+              data-testid="create-block-active"
+              checked={createForm.active}
+              onChange={(e) =>
+                setCreateForm((prev) => ({ ...prev, active: e.target.checked }))
+              }
+              disabled={isCreating}
+              className="size-4 cursor-pointer accent-primary"
+            />
+            <Label htmlFor="create-active" className="cursor-pointer">
+              Bloco ativo
+            </Label>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => setCreateDialogOpen(false)}
+            disabled={isCreating}
+            data-testid="create-block-cancel"
+          >
+            Cancelar
+          </Button>
+          <Button onClick={handleCreateBlock} disabled={isCreating} data-testid="create-block-submit">
+            {isCreating ? (
+              <>
+                <Loader2Icon className="mr-2 size-4 animate-spin" />
+                Criando...
+              </>
+            ) : (
+              "Salvar"
+            )}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* Dialog Confirmar Remoção */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogHeader>
+          <DialogTitle>Remover Bloco</DialogTitle>
+          <DialogDescription>
+            Tem certeza que deseja remover o bloco <strong>{blockToDelete?.name}</strong>? Todas as
+            vagas cadastradas para ele serão excluídas.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setDeleteDialogOpen(false);
+              setBlockToDelete(null);
+            }}
+            disabled={isDeleting}
+            data-testid="delete-block-cancel"
+          >
+            Cancelar
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={handleDeleteBlock}
+            disabled={isDeleting}
+            data-testid="delete-block-confirm"
+          >
+            {isDeleting ? (
+              <>
+                <Loader2Icon className="mr-2 size-4 animate-spin" />
+                Removendo...
+              </>
+            ) : (
+              "Remover"
             )}
           </Button>
         </DialogFooter>

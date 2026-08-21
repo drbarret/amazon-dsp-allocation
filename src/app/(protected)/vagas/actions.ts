@@ -70,11 +70,26 @@ export interface ListVacancyBlocksResult {
   success: boolean;
   error?: string;
   blocks: VacancyBlockRow[];
+  dailyTotals: number[];
 }
 
 export interface MutationResult {
   success: boolean;
   error?: string;
+}
+
+export interface CreateVacancyBlockResult {
+  success: boolean;
+  error?: string;
+  block?: VacancyBlockRow;
+}
+
+const VALID_ELIGIBLE_VEHICLE_TYPES: VehicleEligibility[] = ["GNV", "CARGO_VAN", "PASSENGER"];
+
+function validateEligibleVehicleTypes(values: unknown): VehicleEligibility[] | null {
+  if (!Array.isArray(values) || values.length === 0) return null;
+  if (!values.every((v) => VALID_ELIGIBLE_VEHICLE_TYPES.includes(v))) return null;
+  return values as VehicleEligibility[];
 }
 
 // ---------------------------------------------------------------------------
@@ -97,7 +112,7 @@ export async function listVacancyBlocks(
     transportCompanyId
   );
   if (!access.ok) {
-    return { success: false, error: access.error, blocks: [] };
+    return { success: false, error: access.error, blocks: [], dailyTotals: Array(7).fill(0) };
   }
   const effectiveTransportCompanyId = access.id;
 
@@ -107,10 +122,10 @@ export async function listVacancyBlocks(
     select: { transportCompanyId: true },
   });
   if (!week) {
-    return { success: false, error: "Semana não encontrada.", blocks: [] };
+    return { success: false, error: "Semana não encontrada.", blocks: [], dailyTotals: Array(7).fill(0) };
   }
   if (week.transportCompanyId !== effectiveTransportCompanyId) {
-    return { success: false, error: "Semana não pertence à transportadora selecionada.", blocks: [] };
+    return { success: false, error: "Semana não pertence à transportadora selecionada.", blocks: [], dailyTotals: Array(7).fill(0) };
   }
 
   // Fetch blocks + daily vacancies in a single query to avoid N+1
@@ -143,7 +158,15 @@ export async function listVacancyBlocks(
     total: b.dailyVacancies.reduce((sum, dv) => sum + dv.count, 0),
   }));
 
-  return { success: true, blocks: result };
+  // Aggregate daily totals across all active blocks (query already filters active=true)
+  const dailyTotals = Array(7).fill(0);
+  for (const b of blocks) {
+    for (const dv of b.dailyVacancies) {
+      dailyTotals[dv.dayOfWeek] += dv.count;
+    }
+  }
+
+  return { success: true, blocks: result, dailyTotals };
 }
 
 /**
@@ -378,6 +401,129 @@ export async function updateVacancyBlock(
       updatedById: actorId,
     },
   });
+
+  revalidatePath("/vagas");
+  return { success: true };
+}
+
+/**
+ * Creates a new vacancy block for the resolved transport company.
+ */
+export async function createVacancyBlock(
+  data: {
+    name: string;
+    cycle: number;
+    eligibleVehicleTypes: VehicleEligibility[];
+    shift?: string | null;
+    active?: boolean;
+  },
+  transportCompanyId?: string
+): Promise<CreateVacancyBlockResult> {
+  const session = await requireRole("SUPERVISOR");
+  const actorId = session.user.id;
+
+  // Validate name
+  const name = typeof data.name === "string" ? data.name.trim() : "";
+  if (!name) {
+    return { success: false, error: "name é obrigatório." };
+  }
+
+  // Validate cycle
+  if (data.cycle !== 1 && data.cycle !== 2) {
+    return { success: false, error: "cycle deve ser 1 ou 2." };
+  }
+
+  // Validate eligible vehicle types
+  const eligibleVehicleTypes = validateEligibleVehicleTypes(data.eligibleVehicleTypes);
+  if (!eligibleVehicleTypes) {
+    return { success: false, error: "eligibleVehicleTypes deve conter ao menos um valor válido." };
+  }
+
+  const access = await resolveTransportCompanyId(
+    actorId,
+    session.user.role as UserRole,
+    transportCompanyId
+  );
+  if (!access.ok) {
+    return { success: false, error: access.error };
+  }
+  const effectiveTransportCompanyId = access.id;
+
+  // Compute next sort order for this transport company
+  const aggregate = await prisma.vacancyBlock.aggregate({
+    where: { transportCompanyId: effectiveTransportCompanyId },
+    _max: { sortOrder: true },
+  });
+  const nextSortOrder = (aggregate._max.sortOrder ?? 0) + 1;
+
+  const created = await prisma.vacancyBlock.create({
+    data: {
+      transportCompanyId: effectiveTransportCompanyId,
+      name,
+      cycle: data.cycle,
+      eligibleVehicleTypes,
+      shift: data.shift ?? "",
+      active: data.active ?? true,
+      sortOrder: nextSortOrder,
+      createdById: actorId,
+      updatedById: actorId,
+    },
+  });
+
+  revalidatePath("/vagas");
+
+  return {
+    success: true,
+    block: {
+      id: created.id,
+      name: created.name,
+      cycle: created.cycle,
+      eligibleVehicleTypes: created.eligibleVehicleTypes,
+      shift: created.shift,
+      active: created.active,
+      sortOrder: created.sortOrder,
+      dailyVacancies: [],
+      total: 0,
+    },
+  };
+}
+
+/**
+ * Deletes a vacancy block and all of its daily vacancies atomically.
+ */
+export async function deleteVacancyBlock(
+  blockId: string,
+  transportCompanyId?: string
+): Promise<MutationResult> {
+  const session = await requireRole("SUPERVISOR");
+  const actorId = session.user.id;
+
+  const access = await resolveTransportCompanyId(
+    actorId,
+    session.user.role as UserRole,
+    transportCompanyId
+  );
+  if (!access.ok) {
+    return { success: false, error: access.error };
+  }
+  const effectiveTransportCompanyId = access.id;
+
+  // Validate block belongs to company
+  const block = await prisma.vacancyBlock.findUnique({
+    where: { id: blockId },
+    select: { transportCompanyId: true },
+  });
+  if (!block) {
+    return { success: false, error: "Bloco não encontrado." };
+  }
+  if (block.transportCompanyId !== effectiveTransportCompanyId) {
+    return { success: false, error: "Bloco não pertence à transportadora selecionada." };
+  }
+
+  await prisma.$transaction([
+    prisma.blockDailyVacancy.deleteMany({ where: { vacancyBlockId: blockId } }),
+    prisma.vacancyBlock.delete({ where: { id: blockId } }),
+  ]);
 
   revalidatePath("/vagas");
   return { success: true };

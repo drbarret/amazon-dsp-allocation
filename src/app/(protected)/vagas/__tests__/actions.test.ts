@@ -6,6 +6,8 @@ import {
   setDailyVacancy,
   saveBlockWeek,
   updateVacancyBlock,
+  createVacancyBlock,
+  deleteVacancyBlock,
 } from "../actions";
 
 const { mockAuth } = vi.hoisted(() => ({
@@ -255,8 +257,76 @@ describe.skipIf(SKIP_INTEGRATION)("vagas actions integration", () => {
       const result = await listVacancyBlocks(otherWeek.id);
       expect(result.success).toBe(false);
       expect(result.error).toMatch(/não pertence/);
+      expect(result.dailyTotals).toEqual([0, 0, 0, 0, 0, 0, 0]);
 
       await prisma.dispatchWeek.delete({ where: { id: otherWeek.id } });
+    });
+
+    it("returns dailyTotals summing all active blocks", async () => {
+      const blockA = blockIds[0];
+      const blockB = blockIds[1];
+
+      await saveBlockWeek(blockA, weekId, [1, 2, 3, 4, 5, 6, 7]);
+      await saveBlockWeek(blockB, weekId, [2, 3, 4, 5, 6, 7, 8]);
+
+      const result = await listVacancyBlocks(weekId);
+      expect(result.success).toBe(true);
+      expect(result.dailyTotals).toEqual([3, 5, 7, 9, 11, 13, 15]);
+    });
+
+    it("does not include inactive blocks in dailyTotals", async () => {
+      const blockA = blockIds[0];
+      const blockB = blockIds[1];
+
+      // blockA has [1,2,3,4,5,6,7]; blockB has [2,3,4,5,6,7,8]
+      await updateVacancyBlock(blockA, { active: false });
+
+      const result = await listVacancyBlocks(weekId);
+      expect(result.success).toBe(true);
+      expect(result.dailyTotals).toEqual([2, 3, 4, 5, 6, 7, 8]);
+
+      // Restore active state
+      await updateVacancyBlock(blockA, { active: true });
+
+      // Cleanup vacancies
+      await prisma.blockDailyVacancy.deleteMany({
+        where: { vacancyBlockId: { in: [blockA, blockB] }, dispatchWeekId: weekId },
+      });
+    });
+
+    it("does not include deleted blocks in dailyTotals", async () => {
+      const blockA = blockIds[0];
+      const blockB = blockIds[1];
+
+      await saveBlockWeek(blockA, weekId, [1, 1, 1, 1, 1, 1, 1]);
+      await saveBlockWeek(blockB, weekId, [2, 2, 2, 2, 2, 2, 2]);
+
+      const before = await listVacancyBlocks(weekId);
+      expect(before.dailyTotals).toEqual([3, 3, 3, 3, 3, 3, 3]);
+
+      // Delete blockA and recreate it afterwards to keep blockIds stable
+      await deleteVacancyBlock(blockA);
+
+      const after = await listVacancyBlocks(weekId);
+      expect(after.dailyTotals).toEqual([2, 2, 2, 2, 2, 2, 2]);
+
+      const recreated = await prisma.vacancyBlock.create({
+        data: {
+          id: blockA,
+          transportCompanyId,
+          name: "Recreated Block",
+          cycle: 1,
+          eligibleVehicleTypes: ["GNV"],
+          sortOrder: 1,
+          active: true,
+        },
+      });
+      expect(recreated.id).toBe(blockA);
+
+      // Cleanup blockB vacancies
+      await prisma.blockDailyVacancy.deleteMany({
+        where: { vacancyBlockId: blockB, dispatchWeekId: weekId },
+      });
     });
   });
 
@@ -462,6 +532,155 @@ describe.skipIf(SKIP_INTEGRATION)("vagas actions integration", () => {
   });
 
   // -------------------------------------------------------------------------
+  // deleteVacancyBlock
+  // -------------------------------------------------------------------------
+  describe("deleteVacancyBlock", () => {
+    it("deletes a block and all of its daily vacancies", async () => {
+      const block = await prisma.vacancyBlock.create({
+        data: {
+          transportCompanyId,
+          name: "Block to Delete",
+          cycle: 1,
+          eligibleVehicleTypes: ["GNV"],
+          sortOrder: 99,
+          active: true,
+        },
+      });
+
+      await prisma.blockDailyVacancy.createMany({
+        data: Array.from({ length: 7 }).map((_, dayOfWeek) => ({
+          dispatchWeekId: weekId,
+          vacancyBlockId: block.id,
+          dayOfWeek,
+          count: dayOfWeek + 1,
+          createdById: supervisorId,
+          updatedById: supervisorId,
+        })),
+      });
+
+      const result = await deleteVacancyBlock(block.id);
+      expect(result.success).toBe(true);
+
+      const deletedBlock = await prisma.vacancyBlock.findUnique({
+        where: { id: block.id },
+      });
+      expect(deletedBlock).toBeNull();
+
+      const remainingVacancies = await prisma.blockDailyVacancy.count({
+        where: { vacancyBlockId: block.id },
+      });
+      expect(remainingVacancies).toBe(0);
+    });
+
+    it("rejects block from another company", async () => {
+      const otherBlock = await prisma.vacancyBlock.create({
+        data: {
+          transportCompanyId: otherTransportCompanyId,
+          name: "Other Block for Delete Test",
+          cycle: 1,
+          eligibleVehicleTypes: ["GNV"],
+          sortOrder: 1,
+        },
+      });
+
+      const result = await deleteVacancyBlock(otherBlock.id);
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/não pertence/);
+
+      await prisma.vacancyBlock.delete({ where: { id: otherBlock.id } });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // createVacancyBlock
+  // -------------------------------------------------------------------------
+  describe("createVacancyBlock", () => {
+    it("creates an active block with the next sortOrder", async () => {
+      const result = await createVacancyBlock({
+        name: "New Block",
+        cycle: 1,
+        eligibleVehicleTypes: ["GNV"],
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.block).toBeDefined();
+      expect(result.block?.name).toBe("New Block");
+      expect(result.block?.cycle).toBe(1);
+      expect(result.block?.active).toBe(true);
+      expect(result.block?.eligibleVehicleTypes).toEqual(["GNV"]);
+      expect(result.block?.sortOrder).toBeGreaterThan(4);
+
+      if (result.block) {
+        blockIds.push(result.block.id);
+      }
+    });
+
+    it("rejects empty name", async () => {
+      const result = await createVacancyBlock({
+        name: "   ",
+        cycle: 1,
+        eligibleVehicleTypes: ["GNV"],
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/name é obrigatório/);
+    });
+
+    it("rejects invalid cycle", async () => {
+      const result = await createVacancyBlock({
+        name: "Invalid Cycle",
+        cycle: 3,
+        eligibleVehicleTypes: ["GNV"],
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/cycle deve ser 1 ou 2/);
+    });
+
+    it("rejects empty eligibleVehicleTypes", async () => {
+      const result = await createVacancyBlock({
+        name: "No Eligibility",
+        cycle: 1,
+        eligibleVehicleTypes: [],
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/eligibleVehicleTypes/);
+    });
+
+    it("rejects invalid eligibleVehicleTypes", async () => {
+      const result = await createVacancyBlock({
+        name: "Invalid Eligibility",
+        cycle: 1,
+        eligibleVehicleTypes: ["LARGE_VAN"] as never,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/eligibleVehicleTypes/);
+    });
+
+    it("keeps sortOrder increasing for multiple new blocks", async () => {
+      const first = await createVacancyBlock({
+        name: "First New Block",
+        cycle: 2,
+        eligibleVehicleTypes: ["CARGO_VAN"],
+      });
+      const second = await createVacancyBlock({
+        name: "Second New Block",
+        cycle: 2,
+        eligibleVehicleTypes: ["PASSENGER"],
+      });
+
+      expect(first.success).toBe(true);
+      expect(second.success).toBe(true);
+      expect(second.block?.sortOrder).toBe((first.block?.sortOrder ?? 0) + 1);
+
+      if (first.block) blockIds.push(first.block.id);
+      if (second.block) blockIds.push(second.block.id);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // Permission: DRIVER denied
   // -------------------------------------------------------------------------
   describe("permission", () => {
@@ -491,6 +710,20 @@ describe.skipIf(SKIP_INTEGRATION)("vagas actions integration", () => {
       await expect(updateVacancyBlock(blockIds[0], { name: "Hacked" })).rejects.toThrow(
         "NEXT_REDIRECT"
       );
+    });
+
+    it("DRIVER is denied access to createVacancyBlock", async () => {
+      mockAuth.mockResolvedValue(session("DRIVER") as never);
+
+      await expect(
+        createVacancyBlock({ name: "Hacked", cycle: 1, eligibleVehicleTypes: ["GNV"] })
+      ).rejects.toThrow("NEXT_REDIRECT");
+    });
+
+    it("DRIVER is denied access to deleteVacancyBlock", async () => {
+      mockAuth.mockResolvedValue(session("DRIVER") as never);
+
+      await expect(deleteVacancyBlock(blockIds[0])).rejects.toThrow("NEXT_REDIRECT");
     });
   });
 });
