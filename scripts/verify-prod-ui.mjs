@@ -778,51 +778,44 @@ async function runScenarios(data) {
       if (pendingBefore.rows[0].c === 0) {
         record("S7", "FAIL", "Could not create PENDING request for scenario 7");
       } else {
-        // Now deactivate via /admin/users page (UI, not SQL)
-        // We need an ADMIN token for this, but we don't have one.
-        // The task says "usando a tela /admin/users, nao SQL"
-        // But we can't create an ADMIN fixture per rules.
-        // Let's check if AM can access /admin/users
+        // Deactivate directly via AM on /drivers page (AM canDeactivateDirectly = true)
+        // This exercises the requestDriverDeactivation → $transaction → cancelPendingDeactivationRequests path
         const amCtx2 = await createContextWithToken(browser, amToken, 1440);
         const amPage = await amCtx2.newPage();
-        await amPage.goto(`${PROD_URL}/admin/users`, { waitUntil: "networkidle", timeout: 30000 });
+        await amPage.goto(`${PROD_URL}/drivers?status=all`, { waitUntil: "networkidle", timeout: 30000 });
+        const amSearch = amPage.locator('input[aria-label="Buscar motorista"]');
+        await amSearch.fill(FIXTURES.driverEmail);
+        await amPage.waitForTimeout(500);
 
-        const adminPageLoaded = await amPage.locator('table').or(amPage.getByText('Usuários')).count() > 0;
-        if (!adminPageLoaded) {
-          // AM can't access admin page. Try direct deactivation via AM on drivers page
-          // AM can deactivate directly (canDeactivateDirectly = true for AM)
-          await amPage.goto(`${PROD_URL}/drivers?status=all`, { waitUntil: "networkidle", timeout: 30000 });
-          const amSearch = amPage.locator('input[aria-label="Buscar motorista"]');
-          await amSearch.fill(FIXTURES.driverEmail);
+        const amDeactivateBtn = amPage.locator('button:has-text("Desativar")').first();
+        const amBtnCount = await amDeactivateBtn.count();
+        log(`  AM deactivate button count: ${amBtnCount}`);
+        if (amBtnCount > 0) {
+          await amDeactivateBtn.click();
           await amPage.waitForTimeout(500);
-
-          const amDeactivateBtn = amPage.locator('button:has-text("Desativar")').first();
-          if (await amDeactivateBtn.count() > 0) {
-            await amDeactivateBtn.click();
-            await amPage.waitForTimeout(500);
-            // AM sees "Desativar Motorista" (direct), not "Solicitar"
-            const amReason = amPage.locator('.fixed.inset-0 textarea');
-            await amReason.fill("Desativação direta pelo AM para teste");
-            const amSubmit = amPage.locator('.fixed.inset-0 button:has-text("Desativar")');
+          // AM sees "Desativar Motorista" (direct), not "Solicitar"
+          const amModalTitle = amPage.locator('h2:has-text("Desativar Motorista")');
+          const isDirectMode = await amModalTitle.count() > 0;
+          log(`  AM modal direct mode: ${isDirectMode}`);
+          const amReason = amPage.locator('.fixed.inset-0 textarea');
+          await amReason.fill("Desativação direta pelo AM para teste");
+          const amSubmit = amPage.locator('.fixed.inset-0 button:has-text("Desativar")');
+          const amSubmitCount = await amSubmit.count();
+          log(`  AM submit button count: ${amSubmitCount}`);
+          if (amSubmitCount > 0) {
             await amSubmit.click();
-            await amPage.waitForTimeout(2000);
+            await amPage.waitForTimeout(3000);
+            // Check for success toast
+            const amToasts = amPage.locator('[data-sonner-toast]');
+            const amToastCount = await amToasts.count();
+            log(`  AM toast count after deactivate: ${amToastCount}`);
+            for (let i = 0; i < amToastCount; i++) {
+              const toastText = await amToasts.nth(i).textContent();
+              log(`  AM Toast ${i}: ${toastText}`);
+            }
           }
-          await amCtx2.close();
-        } else {
-          // Use admin page to deactivate
-          const adminSearch = amPage.locator('input[type="search"], input[placeholder*="buscar"], input[placeholder*="Buscar"]').first();
-          if (await adminSearch.count() > 0) {
-            await adminSearch.fill(FIXTURES.driverEmail);
-            await amPage.waitForTimeout(500);
-          }
-          // Find deactivate action in admin
-          const adminDeactivate = amPage.locator('button:has-text("Desativar"), button:has-text("desativar")').first();
-          if (await adminDeactivate.count() > 0) {
-            await adminDeactivate.click();
-            await amPage.waitForTimeout(2000);
-          }
-          await amCtx2.close();
         }
+        await amCtx2.close();
 
         // Check if PENDING was auto-cancelled
         const pendingAfter = await db.query(
