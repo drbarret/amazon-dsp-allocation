@@ -2,6 +2,7 @@ import { requireRole } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import { DriversClient } from "./client";
 import { getPendingDeactivationCount } from "./actions";
+import type { UserRole } from "@/generated/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,8 @@ export interface DriverRow {
 export default async function DriversPage(props: {
   searchParams?: Promise<{ status?: string }>;
 }) {
-  await requireRole("SUPERVISOR");
+  const session = await requireRole("SUPERVISOR");
+  const currentActorRole = session.user.role as UserRole;
   const searchParams = await props.searchParams;
   const statusFilter = searchParams?.status ?? "active";
 
@@ -101,6 +103,7 @@ export default async function DriversPage(props: {
       drivers={rows}
       pendingDeactivationCount={pendingCount}
       initialStatusFilter={statusFilter}
+      currentActorRole={currentActorRole}
     />
   );
 }

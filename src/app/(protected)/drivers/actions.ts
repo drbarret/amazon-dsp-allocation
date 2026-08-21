@@ -283,6 +283,8 @@ export async function saveDriverEdits(
  * Supervisor requests deactivation of a driver. The driver stays ACTIVE
  * until an Account Manager approves. Only one PENDING request per driver
  * is allowed (enforced by partial unique index + this check).
+ *
+ * Account Managers and Admins deactivate directly without creating a request.
  */
 export async function requestDriverDeactivation(
   driverUserId: string,
@@ -292,17 +294,12 @@ export async function requestDriverDeactivation(
   const actorId = session.user.id;
   const actorRole = session.user.role as UserRole;
 
-  // Only SUPERVISOR creates requests; AM/ADMIN deactivate directly
-  if (actorRole !== "SUPERVISOR") {
-    return { success: false, error: "Apenas supervisores criam solicitações de desativação. Gerentes e admins podem desativar diretamente." };
-  }
-
   const access = await resolveTransportCompanyId(actorId, actorRole);
   if (!access.ok) return { success: false, error: access.error };
 
   const target = await prisma.user.findUnique({
     where: { id: driverUserId },
-    select: { id: true, role: true, active: true, transportCompanyId: true },
+    select: { id: true, role: true, active: true, email: true, transportCompanyId: true },
   });
 
   if (!target || target.role !== "DRIVER") {
@@ -317,6 +314,47 @@ export async function requestDriverDeactivation(
     return { success: false, error: crossCheck2.error };
   }
 
+  // ACCOUNT_MANAGER and ADMIN deactivate directly
+  if (actorRole === "ACCOUNT_MANAGER" || actorRole === "ADMIN") {
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: driverUserId },
+        data: {
+          active: false,
+          deactivatedById: actorId,
+          deactivatedByRole: actorRole,
+        },
+      });
+
+      // Block AllowedEmail
+      await tx.allowedEmail.updateMany({
+        where: { email: target.email, status: "ACTIVE" },
+        data: { status: "BLOCKED" },
+      });
+    });
+
+    // Cancel any pending deactivation requests for this driver
+    await cancelPendingDeactivationRequests(
+      driverUserId,
+      actorId,
+      "Cancelado: motorista desativado diretamente por gerente/admin",
+    );
+
+    await writeAuditLog({
+      eventType: "USER_DEACTIVATED",
+      actorId,
+      targetUserId: driverUserId,
+      oldValue: { active: true },
+      newValue: { active: false, deactivatedByRole: actorRole },
+      justification: reason.trim() || "Desativação direta via menu Motoristas",
+    });
+
+    revalidatePath("/drivers");
+    revalidatePath("/drivers/deactivation-requests");
+    return { success: true };
+  }
+
+  // SUPERVISOR creates a deactivation request
   // Check for existing PENDING request (friendly error before hitting unique index)
   const existingPending = await prisma.deactivationRequest.findFirst({
     where: { driverUserId, status: "PENDING" },

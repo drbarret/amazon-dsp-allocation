@@ -12,9 +12,12 @@ import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { StatusPill } from "@/components/status-pill";
 import {
   saveDriverEdits,
+  requestDriverDeactivation,
 } from "./actions";
 import { reactivateUser } from "@/app/(protected)/admin/users/actions";
+import { setDriverGnvMarking } from "@/lib/driver-actions";
 import type { DriverRow } from "./page";
+import type { UserRole } from "@/generated/prisma";
 
 const VEHICLE_LABELS: Record<string, string> = {
   CARGO_VAN: "Cargo Van",
@@ -37,12 +40,14 @@ interface Props {
   drivers: DriverRow[];
   pendingDeactivationCount: number;
   initialStatusFilter: string;
+  currentActorRole: UserRole;
 }
 
 export function DriversClient({
   drivers,
   pendingDeactivationCount,
   initialStatusFilter,
+  currentActorRole,
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -54,6 +59,11 @@ export function DriversClient({
   const [editingDriver, setEditingDriver] = useState<DriverRow | null>(null);
   const [editForm, setEditForm] = useState<Record<string, unknown>>({});
   const [saving, setSaving] = useState(false);
+
+  // Deactivation modal state
+  const [deactivatingDriver, setDeactivatingDriver] = useState<DriverRow | null>(null);
+  const [deactivationReason, setDeactivationReason] = useState("");
+  const [deactivating, setDeactivating] = useState(false);
 
   function handleStatusChange(newStatus: string) {
     const params = new URLSearchParams(window.location.search);
@@ -119,6 +129,63 @@ export function DriversClient({
     }
   }
 
+  function handleGnvToggle(userId: string, enabled: boolean) {
+    startTransition(async () => {
+      try {
+        const result = await setDriverGnvMarking(userId, enabled);
+        if (result.success) {
+          toast.success(
+            enabled ? "GNV marcado com sucesso." : "GNV removido com sucesso."
+          );
+          router.refresh();
+        } else {
+          toast.error(result.error ?? "Erro ao alterar marcação GNV.");
+        }
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao alterar marcação GNV.");
+      }
+    });
+  }
+
+  function openDeactivationModal(driver: DriverRow) {
+    setDeactivatingDriver(driver);
+    setDeactivationReason("");
+  }
+
+  function closeDeactivationModal() {
+    setDeactivatingDriver(null);
+    setDeactivationReason("");
+  }
+
+  async function handleDeactivate() {
+    if (!deactivatingDriver) return;
+
+    setDeactivating(true);
+    try {
+      const result = await requestDriverDeactivation(
+        deactivatingDriver.userId,
+        deactivationReason
+      );
+      if (result.success) {
+        if (canDeactivateDirectly) {
+          toast.success("Motorista desativado com sucesso.");
+        } else {
+          toast.success(
+            "Solicitação de desativação enviada. O motorista permanece ativo até a aprovação do gerente de conta."
+          );
+        }
+        closeDeactivationModal();
+        router.refresh();
+      } else {
+        toast.error(result.error ?? "Erro ao processar desativação.");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao processar desativação.");
+    } finally {
+      setDeactivating(false);
+    }
+  }
+
   async function handleReactivate(driver: DriverRow) {
     startTransition(async () => {
       try {
@@ -134,6 +201,9 @@ export function DriversClient({
       }
     });
   }
+
+  // Determine if current user can deactivate directly (AM/ADMIN) or must request (SUPERVISOR)
+  const canDeactivateDirectly = currentActorRole === "ACCOUNT_MANAGER" || currentActorRole === "ADMIN";
 
   const columns: DataTableColumn<DriverRow>[] = [
     {
@@ -168,6 +238,23 @@ export function DriversClient({
         <StatusPill tone="neutral">
           {VEHICLE_LABELS[driver.vehicleType] ?? driver.vehicleType}
         </StatusPill>
+      ),
+    },
+    {
+      header: "GNV",
+      className: "whitespace-nowrap",
+      cell: (driver) => (
+        <div className="flex items-center gap-2">
+          <Checkbox
+            checked={driver.hasGnv}
+            onCheckedChange={(checked) =>
+              handleGnvToggle(driver.userId, !!checked)
+            }
+            disabled={isPending}
+            aria-label={`Marcar GNV para ${driver.name}`}
+          />
+          {driver.hasGnv && <StatusPill tone="info">GNV</StatusPill>}
+        </div>
       ),
     },
     {
@@ -222,6 +309,16 @@ export function DriversClient({
           >
             <PencilIcon className="size-4" />
           </button>
+          {driver.active && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => openDeactivationModal(driver)}
+              disabled={isPending}
+            >
+              Desativar
+            </Button>
+          )}
           {!driver.active && (
             <Button
               variant="outline"
@@ -414,6 +511,53 @@ export function DriversClient({
               </Button>
               <Button onClick={handleSave} disabled={saving}>
                 {saving ? "Salvando..." : "Salvar"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Deactivation Modal */}
+      {deactivatingDriver && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md space-y-4 rounded-lg bg-background p-6 shadow-xl">
+            <h2 className="text-lg font-semibold">
+              {canDeactivateDirectly ? "Desativar Motorista" : "Solicitar Desativação"}
+            </h2>
+
+            <p className="text-sm text-muted-foreground">
+              {canDeactivateDirectly
+                ? `Você está prestes a desativar o motorista ${deactivatingDriver.name}. Esta ação é imediata.`
+                : `Como supervisor, sua solicitação será enviada para aprovação do gerente de conta. O motorista ${deactivatingDriver.name} permanecerá ativo até a aprovação.`}
+            </p>
+
+            <div className="space-y-2">
+              <label className="block text-sm font-medium">
+                Motivo {canDeactivateDirectly ? "(opcional)" : "(obrigatório)"}
+              </label>
+              <textarea
+                className="w-full rounded border px-3 py-2 text-sm"
+                rows={3}
+                value={deactivationReason}
+                onChange={(e) => setDeactivationReason(e.target.value)}
+                placeholder="Informe o motivo da desativação..."
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={closeDeactivationModal} disabled={deactivating}>
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDeactivate}
+                disabled={deactivating || (!canDeactivateDirectly && !deactivationReason.trim())}
+              >
+                {deactivating
+                  ? "Processando..."
+                  : canDeactivateDirectly
+                    ? "Desativar"
+                    : "Enviar Solicitação"}
               </Button>
             </div>
           </div>

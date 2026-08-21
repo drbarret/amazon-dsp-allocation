@@ -306,18 +306,27 @@ describe.skipIf(SKIP_INTEGRATION)("driver edit and deactivation request actions"
 
   // ---- requestDriverDeactivation ----
 
-  it("rejects ACCOUNT_MANAGER from creating deactivation request", async () => {
+  it("ACCOUNT_MANAGER deactivates driver directly", async () => {
     if (!dbReady) return;
     mockAuth.mockResolvedValue(session("ACCOUNT_MANAGER", amId));
 
-    const result = await requestDriverDeactivation(driverUserId, "AM trying");
+    const result = await requestDriverDeactivation(driverUserId, "AM direct deactivation");
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("Apenas supervisores");
+    expect(result.success).toBe(true);
+
+    const driver = await prisma.user.findUnique({ where: { id: driverUserId } });
+    expect(driver?.active).toBe(false);
+    expect(driver?.deactivatedByRole).toBe("ACCOUNT_MANAGER");
   });
 
-  it("creates PENDING request and driver stays active", async () => {
+  it("creates PENDING request and driver stays active (SUPERVISOR)", async () => {
     if (!dbReady) return;
+    // Reactivate driver first
+    await prisma.user.update({
+      where: { id: driverUserId },
+      data: { active: true, deactivatedById: null, deactivatedByRole: null },
+    });
+
     mockAuth.mockResolvedValue(session("SUPERVISOR", supervisorId));
 
     const result = await requestDriverDeactivation(driverUserId, "Test reason");

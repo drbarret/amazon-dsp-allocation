@@ -25,6 +25,7 @@ vi.mock("next/navigation", () => ({
 
 import { DriversClient } from "../client";
 import type { DriverRow } from "../page";
+import type { UserRole } from "@/generated/prisma";
 
 afterEach(cleanup);
 
@@ -84,7 +85,7 @@ const sampleDrivers: DriverRow[] = [
 
 const defaultProps = {
   drivers: sampleDrivers,
-  currentActorRole: "SUPERVISOR",
+  currentActorRole: "SUPERVISOR" as UserRole,
   pendingDeactivationCount: 0,
   initialStatusFilter: "active",
 };
