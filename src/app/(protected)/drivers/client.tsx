@@ -42,7 +42,7 @@ interface Props {
 
 export function DriversClient({
   drivers,
-  currentActorRole,
+  currentActorRole: _currentActorRole,
   pendingDeactivationCount,
   initialStatusFilter,
 }: Props) {
