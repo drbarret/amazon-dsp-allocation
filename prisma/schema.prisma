@@ -175,6 +175,18 @@ enum AuditEventType {
   CITY_PREFERENCES_UPDATED
   VEHICLE_TYPE_UPDATED
   CNH_COLLECTED
+  DRIVER_PROFILE_UPDATED
+  DRIVER_PHONE_UPDATED
+  DEACTIVATION_REQUEST_CREATED
+  DEACTIVATION_REQUEST_APPROVED
+  DEACTIVATION_REQUEST_REJECTED
+  DEACTIVATION_REQUEST_CANCELLED
+}
+
+enum DeactivationRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 // ---------- Core Entities ----------
@@ -262,6 +274,11 @@ model User {
   availabilityApprovalsReviewed AvailabilityApproval[] @relation("AvailabilityReviewer")
   availabilitiesImported      DriverAvailability[] @relation("AvailabilityImportedBy")
 
+  // Deactivation request relations
+  deactivationRequestsAsDriver    DeactivationRequest[] @relation("DeactivationRequestDriver")
+  deactivationRequestsAsRequester DeactivationRequest[] @relation("DeactivationRequestRequester")
+  deactivationRequestsAsReviewer  DeactivationRequest[] @relation("DeactivationRequestReviewer")
+
   @@index([email])
   @@index([role, active])
   @@map("users")
@@ -278,6 +295,16 @@ model DriverProfile {
   transporterId       String? // Amazon Transporter ID
   onboardingCompleted Boolean     @default(false)
   cnhExpiration       DateTime? // CNH expiry date; null = unknown/not set
+
+  // Driver cycle preference (independent from weekly speedAfternoon)
+  worksCiclo1         Boolean     @default(false) // Manhã
+  worksCiclo2         Boolean     @default(false) // Tarde / Speed
+
+  // Trust flag: manual mark by account managers. Not consumed by allocation yet.
+  isTrusted           Boolean     @default(false)
+
+  // WhatsApp group name (free text, max 80 chars enforced at application level)
+  whatsappGroup       String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -935,4 +962,27 @@ model AllowedEmail {
   @@index([email])
   @@index([status])
   @@map("allowed_emails")
+}
+
+// ---------- Deactivation Requests ----------
+
+model DeactivationRequest {
+  id              String                      @id @default(uuid())
+  driverUserId    String
+  requestedById   String
+  status          DeactivationRequestStatus   @default(PENDING)
+  reason          String?
+  reviewerId      String?
+  reviewedAt      DateTime?
+  reviewNotes     String?
+  createdAt       DateTime                    @default(now())
+  updatedAt       DateTime                    @updatedAt
+
+  driver          User  @relation("DeactivationRequestDriver", fields: [driverUserId], references: [id], onDelete: Cascade)
+  requestedBy     User  @relation("DeactivationRequestRequester", fields: [requestedById], references: [id], onDelete: Cascade)
+  reviewer        User? @relation("DeactivationRequestReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([driverUserId])
+  @@map("deactivation_requests")
 }

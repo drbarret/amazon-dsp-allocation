@@ -40,6 +40,10 @@ const mockPrisma = {
     findUnique: vi.fn(),
     upsert: vi.fn(),
   },
+  deactivationRequest: {
+    findMany: vi.fn().mockResolvedValue([]),
+    updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+  },
 };
 
 vi.mock("@/lib/prisma", () => ({

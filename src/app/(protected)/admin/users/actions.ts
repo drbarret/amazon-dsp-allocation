@@ -6,6 +6,7 @@ import { writeAuditLog } from "@/lib/audit";
 import { roleIsAtLeast } from "@/lib/authz";
 import { validateCityPreferences } from "@/lib/onboarding";
 import { isValidCnhDate } from "@/lib/cnh-validation";
+import { cancelPendingDeactivationRequests } from "@/app/(protected)/drivers/actions";
 import { revalidatePath } from "next/cache";
 import type { UserRole, VehicleType } from "@/generated/prisma";
 
@@ -158,6 +159,13 @@ export async function deactivateUser(targetUserId: string) {
     data: { active: false, deactivatedById: actorId, deactivatedByRole: actorRole },
   });
 
+  // Cancel any pending deactivation requests for this driver
+  await cancelPendingDeactivationRequests(
+    targetUserId,
+    actorId,
+    "Cancelado: motorista desativado diretamente via /admin/users",
+  );
+
   // Layer 1: block AllowedEmail (set ACTIVE → BLOCKED)
   // Only touch it if it exists and is ACTIVE — don't overwrite REVOKED.
   await prisma.allowedEmail.updateMany({
@@ -222,6 +230,13 @@ export async function reactivateUser(targetUserId: string) {
     where: { id: targetUserId },
     data: { active: true, deactivatedById: null, deactivatedByRole: null },
   });
+
+  // Cancel any pending deactivation requests for this driver
+  await cancelPendingDeactivationRequests(
+    targetUserId,
+    actorId,
+    "Cancelado: motorista reativado diretamente via /admin/users",
+  );
 
   // Layer 1: reactivate AllowedEmail (set BLOCKED → ACTIVE)
   // Only touch it if it exists and is BLOCKED — don't overwrite REVOKED.

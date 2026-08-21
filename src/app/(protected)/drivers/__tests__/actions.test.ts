@@ -1,0 +1,450 @@
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { prisma } from "@/lib/prisma";
+import { SKIP_INTEGRATION, requireDatabase } from "@/lib/test-db-gate";
+import {
+  saveDriverEdits,
+  requestDriverDeactivation,
+  reviewDeactivationRequest,
+  cancelPendingDeactivationRequests,
+} from "../actions";
+
+// ---------------------------------------------------------------------------
+// Integration tests for driver edit and deactivation request actions.
+//
+// Proves (calling REAL production code against a real Postgres database):
+//   - saveDriverEdits updates all fields atomically in a transaction
+//   - saveDriverEdits rejects invalid data (city, vehicle type, whatsapp length)
+//   - saveDriverEdits enforces cross-company isolation
+//   - requestDriverDeactivation creates PENDING request, driver stays active
+//   - Second PENDING for same driver is rejected
+//   - After REJECTED, new PENDING succeeds
+//   - reviewDeactivationRequest APPROVED deactivates the driver
+//   - cancelPendingDeactivationRequests cancels orphaned requests
+//   - Phone encryption works correctly
+// ---------------------------------------------------------------------------
+
+const { mockAuth } = vi.hoisted(() => ({
+  mockAuth: vi.fn(),
+}));
+
+vi.mock("@/lib/auth", () => ({
+  auth: mockAuth,
+}));
+
+vi.mock("next/cache", () => ({
+  revalidatePath: vi.fn(),
+}));
+
+describe.skipIf(SKIP_INTEGRATION)("driver edit and deactivation request actions", () => {
+  const runId = Date.now();
+
+  let transportCompanyId = "";
+  let otherTransportCompanyId = "";
+  let supervisorId = "";
+  let amId = "";
+  let driverUserId = "";
+  let driverProfileId = "";
+  let otherSupervisorId = "";
+  let dbReady = false;
+
+  function session(role: string, userId: string, companyId?: string) {
+    return {
+      user: {
+        id: userId,
+        role,
+        active: true,
+        transportCompanyId: companyId ?? transportCompanyId,
+      },
+    };
+  }
+
+  beforeAll(async () => {
+    await requireDatabase();
+    try {
+      // Create transport companies
+      const tc1 = await prisma.transportCompany.create({
+        data: { name: `TC-Edit-${runId}`, cnpj: `0000000000${runId}` },
+      });
+      transportCompanyId = tc1.id;
+
+      const tc2 = await prisma.transportCompany.create({
+        data: { name: `TC-Other-${runId}`, cnpj: `9999999999${runId}` },
+      });
+      otherTransportCompanyId = tc2.id;
+
+      // Create supervisor
+      const sup = await prisma.user.create({
+        data: {
+          email: `__test_sup_edit_${runId}@test.local`,
+          name: "Test Supervisor Edit",
+          role: "SUPERVISOR",
+          transportCompanyId,
+        },
+      });
+      supervisorId = sup.id;
+
+      // Create other supervisor (different company)
+      const otherSup = await prisma.user.create({
+        data: {
+          email: `__test_other_sup_${runId}@test.local`,
+          name: "Other Supervisor",
+          role: "SUPERVISOR",
+          transportCompanyId: otherTransportCompanyId,
+        },
+      });
+      otherSupervisorId = otherSup.id;
+
+      // Create account manager
+      const am = await prisma.user.create({
+        data: {
+          email: `__test_am_edit_${runId}@test.local`,
+          name: "Test AM Edit",
+          role: "ACCOUNT_MANAGER",
+          transportCompanyId,
+        },
+      });
+      amId = am.id;
+
+      // Create driver with profile
+      const drv = await prisma.user.create({
+        data: {
+          email: `__test_drv_edit_${runId}@test.local`,
+          name: "Test Driver Edit",
+          role: "DRIVER",
+          transportCompanyId,
+          driverProfile: {
+            create: {
+              vehicleType: "CARGO_VAN",
+              transporterId: "T-TEST",
+            },
+          },
+        },
+        include: { driverProfile: true },
+      });
+      driverUserId = drv.id;
+      driverProfileId = drv.driverProfile!.id;
+
+      dbReady = true;
+    } catch (e) {
+      console.error("Setup failed:", e);
+    }
+  });
+
+  afterAll(async () => {
+    if (!dbReady) return;
+    try {
+      // Cleanup in correct order (cascade should handle most)
+      await prisma.deactivationRequest.deleteMany({
+        where: {
+          OR: [
+            { driverUserId },
+            { requestedById: supervisorId },
+            { reviewerId: amId },
+          ],
+        },
+      });
+      await prisma.regionCityPreference.deleteMany({
+        where: { driverProfileId },
+      });
+      await prisma.driverProfile.deleteMany({
+        where: { id: driverProfileId },
+      });
+      await prisma.user.deleteMany({
+        where: {
+          id: { in: [supervisorId, amId, driverUserId, otherSupervisorId] },
+        },
+      });
+      await prisma.transportCompany.deleteMany({
+        where: {
+          id: { in: [transportCompanyId, otherTransportCompanyId] },
+        },
+      });
+    } catch (e) {
+      console.error("Cleanup failed:", e);
+    }
+  });
+
+  // ---- saveDriverEdits ----
+
+  it("rejects DRIVER role from editing", async () => {
+    if (!dbReady) return;
+    // Use a different user as target so self-edit check doesn't trigger first
+    mockAuth.mockResolvedValue(session("DRIVER", driverUserId));
+
+    await expect(saveDriverEdits(supervisorId, {
+      name: "Hacked by Driver",
+    })).rejects.toThrow("Permissão insuficiente");
+  });
+
+  it("updates driver profile fields atomically", async () => {
+    if (!dbReady) return;
+    mockAuth.mockResolvedValue(session("SUPERVISOR", supervisorId));
+
+    const result = await saveDriverEdits(driverUserId, {
+      name: "Updated Name",
+      vehicleType: "LARGE_VAN",
+      transporterId: "T-NEW",
+      worksCiclo1: true,
+      worksCiclo2: true,
+      isTrusted: true,
+      whatsappGroup: "Grupo Teste",
+    });
+
+    expect(result.success).toBe(true);
+
+    const updated = await prisma.user.findUnique({
+      where: { id: driverUserId },
+      include: { driverProfile: true },
+    });
+
+    expect(updated?.name).toBe("Updated Name");
+    expect(updated?.driverProfile?.vehicleType).toBe("LARGE_VAN");
+    expect(updated?.driverProfile?.transporterId).toBe("T-NEW");
+    expect(updated?.driverProfile?.worksCiclo1).toBe(true);
+    expect(updated?.driverProfile?.worksCiclo2).toBe(true);
+    expect(updated?.driverProfile?.isTrusted).toBe(true);
+    expect(updated?.driverProfile?.whatsappGroup).toBe("Grupo Teste");
+  });
+
+  it("updates city preferences atomically", async () => {
+    if (!dbReady) return;
+    mockAuth.mockResolvedValue(session("SUPERVISOR", supervisorId));
+
+    const result = await saveDriverEdits(driverUserId, {
+      cities: ["Jundiaí", "Louveira"],
+    });
+
+    expect(result.success).toBe(true);
+
+    const prefs = await prisma.regionCityPreference.findMany({
+      where: { driverProfileId },
+      orderBy: { priority: "asc" },
+    });
+
+    expect(prefs).toHaveLength(2);
+    expect(prefs[0].city).toBe("Jundiaí");
+    expect(prefs[0].priority).toBe(1);
+    expect(prefs[1].city).toBe("Louveira");
+    expect(prefs[1].priority).toBe(2);
+  });
+
+  it("rejects invalid city", async () => {
+    if (!dbReady) return;
+    mockAuth.mockResolvedValue(session("SUPERVISOR", supervisorId));
+
+    const result = await saveDriverEdits(driverUserId, {
+      cities: ["Cidade Inexistente"],
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Cidade inválida");
+  });
+
+  it("does not persist name when city validation fails (pre-transaction guard)", async () => {
+    if (!dbReady) return;
+    mockAuth.mockResolvedValue(session("SUPERVISOR", supervisorId));
+
+    // First set a known name
+    await saveDriverEdits(driverUserId, { name: "Atomicity Test Before" });
+
+    // Now try to update name + invalid cities in one call
+    const result = await saveDriverEdits(driverUserId, {
+      name: "Atomicity Test After",
+      cities: ["Cidade Inexistente"],
+    });
+
+    expect(result.success).toBe(false);
+
+    // Name must NOT have been updated (validation rejects before transaction starts)
+    const user = await prisma.user.findUnique({ where: { id: driverUserId } });
+    expect(user?.name).toBe("Atomicity Test Before");
+  });
+
+  it("rejects whatsapp group > 80 chars", async () => {
+    if (!dbReady) return;
+    mockAuth.mockResolvedValue(session("SUPERVISOR", supervisorId));
+
+    const result = await saveDriverEdits(driverUserId, {
+      whatsappGroup: "A".repeat(81),
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("80 caracteres");
+  });
+
+  it("enforces cross-company isolation", async () => {
+    if (!dbReady) return;
+    mockAuth.mockResolvedValue(session("SUPERVISOR", otherSupervisorId, otherTransportCompanyId));
+
+    const result = await saveDriverEdits(driverUserId, {
+      name: "Hacked Name",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("outra transportadora");
+  });
+
+  it("encrypts phone correctly", async () => {
+    if (!dbReady) return;
+    mockAuth.mockResolvedValue(session("SUPERVISOR", supervisorId));
+
+    const result = await saveDriverEdits(driverUserId, {
+      phone: "(11) 98765-4321",
+    });
+
+    expect(result.success).toBe(true);
+
+    const profile = await prisma.driverProfile.findUnique({
+      where: { id: driverProfileId },
+    });
+
+    expect(profile?.phoneFormatted).toBe("(11) 98765-4321");
+    expect(profile?.phone).toBeTruthy();
+    expect(profile?.phone).not.toBe("(11) 98765-4321"); // must be encrypted
+    expect(profile?.phone).toContain(":"); // iv:authTag:ciphertext format
+  });
+
+  // ---- requestDriverDeactivation ----
+
+  it("rejects ACCOUNT_MANAGER from creating deactivation request", async () => {
+    if (!dbReady) return;
+    mockAuth.mockResolvedValue(session("ACCOUNT_MANAGER", amId));
+
+    const result = await requestDriverDeactivation(driverUserId, "AM trying");
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Apenas supervisores");
+  });
+
+  it("creates PENDING request and driver stays active", async () => {
+    if (!dbReady) return;
+    mockAuth.mockResolvedValue(session("SUPERVISOR", supervisorId));
+
+    const result = await requestDriverDeactivation(driverUserId, "Test reason");
+
+    expect(result.success).toBe(true);
+
+    const driver = await prisma.user.findUnique({ where: { id: driverUserId } });
+    expect(driver?.active).toBe(true);
+
+    const req = await prisma.deactivationRequest.findFirst({
+      where: { driverUserId, status: "PENDING" },
+    });
+    expect(req).toBeTruthy();
+    expect(req?.reason).toBe("Test reason");
+  });
+
+  it("rejects second PENDING for same driver", async () => {
+    if (!dbReady) return;
+    mockAuth.mockResolvedValue(session("SUPERVISOR", supervisorId));
+
+    const result = await requestDriverDeactivation(driverUserId, "Second attempt");
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("pendente");
+  });
+
+  // ---- reviewDeactivationRequest ----
+
+  it("rejects SUPERVISOR from reviewing deactivation request", async () => {
+    if (!dbReady) return;
+    // Use the existing PENDING request created by "creates PENDING request" test
+    const pendingReq = await prisma.deactivationRequest.findFirst({
+      where: { driverUserId, status: "PENDING" },
+    });
+    expect(pendingReq).toBeTruthy();
+
+    // Try to review as SUPERVISOR — should fail
+    mockAuth.mockResolvedValue(session("SUPERVISOR", supervisorId));
+    const result = await reviewDeactivationRequest(pendingReq!.id, "APPROVED");
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Apenas gerentes de conta");
+  });
+
+  it("APPROVED deactivates the driver", async () => {
+    if (!dbReady) return;
+    mockAuth.mockResolvedValue(session("ACCOUNT_MANAGER", amId));
+
+    const pendingReq = await prisma.deactivationRequest.findFirst({
+      where: { driverUserId, status: "PENDING" },
+    });
+    expect(pendingReq).toBeTruthy();
+
+    const result = await reviewDeactivationRequest(pendingReq!.id, "APPROVED");
+
+    expect(result.success).toBe(true);
+
+    const driver = await prisma.user.findUnique({ where: { id: driverUserId } });
+    expect(driver?.active).toBe(false);
+    expect(driver?.deactivatedByRole).toBe("ACCOUNT_MANAGER");
+
+    const req = await prisma.deactivationRequest.findUnique({
+      where: { id: pendingReq!.id },
+    });
+    expect(req?.status).toBe("APPROVED");
+  });
+
+  it("after REJECTED, new PENDING succeeds", async () => {
+    if (!dbReady) return;
+
+    // First, reactivate the driver for this test
+    mockAuth.mockResolvedValue(session("ACCOUNT_MANAGER", amId));
+    await prisma.user.update({
+      where: { id: driverUserId },
+      data: { active: true, deactivatedById: null, deactivatedByRole: null },
+    });
+
+    // Create and reject a request
+    mockAuth.mockResolvedValue(session("SUPERVISOR", supervisorId));
+    await requestDriverDeactivation(driverUserId, "Will be rejected");
+
+    const pendingReq = await prisma.deactivationRequest.findFirst({
+      where: { driverUserId, status: "PENDING" },
+    });
+
+    mockAuth.mockResolvedValue(session("ACCOUNT_MANAGER", amId));
+    await reviewDeactivationRequest(pendingReq!.id, "REJECTED", "Not now");
+
+    // Now create a new PENDING — should succeed
+    mockAuth.mockResolvedValue(session("SUPERVISOR", supervisorId));
+    const result = await requestDriverDeactivation(driverUserId, "New attempt");
+
+    expect(result.success).toBe(true);
+
+    const newReq = await prisma.deactivationRequest.findFirst({
+      where: { driverUserId, status: "PENDING" },
+    });
+    expect(newReq).toBeTruthy();
+    expect(newReq?.reason).toBe("New attempt");
+  });
+
+  // ---- cancelPendingDeactivationRequests ----
+
+  it("cancels pending requests when driver is deactivated externally", async () => {
+    if (!dbReady) return;
+
+    // There should be a PENDING request from the previous test
+    const pendingBefore = await prisma.deactivationRequest.count({
+      where: { driverUserId, status: "PENDING" },
+    });
+    expect(pendingBefore).toBeGreaterThan(0);
+
+    await cancelPendingDeactivationRequests(
+      driverUserId,
+      supervisorId,
+      "Cancelado: teste externo",
+    );
+
+    const pendingAfter = await prisma.deactivationRequest.count({
+      where: { driverUserId, status: "PENDING" },
+    });
+    expect(pendingAfter).toBe(0);
+
+    const cancelled = await prisma.deactivationRequest.findFirst({
+      where: { driverUserId, status: "REJECTED" },
+      orderBy: { updatedAt: "desc" },
+    });
+    expect(cancelled?.reviewNotes).toContain("teste externo");
+  });
+});

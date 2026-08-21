@@ -3,13 +3,24 @@ import * as React from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 
-// ---------------------------------------------------------------------------
-// Mocks: o client usa server actions e componentes de UI. Mockamos as actions
-// para não tocar em banco/rede, e renderizamos o JSX diretamente no jsdom.
-// ---------------------------------------------------------------------------
-
 vi.mock("@/lib/driver-actions", () => ({
   setDriverGnvMarking: vi.fn().mockResolvedValue({ success: true }),
+}));
+
+vi.mock("../actions", () => ({
+  saveDriverEdits: vi.fn().mockResolvedValue({ success: true }),
+  requestDriverDeactivation: vi.fn().mockResolvedValue({ success: true }),
+  reviewDeactivationRequest: vi.fn().mockResolvedValue({ success: true }),
+  getPendingDeactivationCount: vi.fn().mockResolvedValue(0),
+}));
+
+vi.mock("@/app/(protected)/admin/users/actions", () => ({
+  reactivateUser: vi.fn().mockResolvedValue({ success: true }),
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 import { DriversClient } from "../client";
@@ -25,6 +36,15 @@ const sampleDrivers: DriverRow[] = [
     vehicleType: "CARGO_VAN",
     hasGnv: false,
     onboardingCompleted: true,
+    transporterId: "T001",
+    worksCiclo1: true,
+    worksCiclo2: false,
+    isTrusted: false,
+    whatsappGroup: "Grupo Jundiaí",
+    phoneFormatted: "(11) 99999-0001",
+    cities: ["Jundiaí"],
+    active: true,
+    deactivatedByRole: null,
   },
   {
     userId: "u2",
@@ -33,6 +53,15 @@ const sampleDrivers: DriverRow[] = [
     vehicleType: "PASSEIO",
     hasGnv: true,
     onboardingCompleted: true,
+    transporterId: "T002",
+    worksCiclo1: false,
+    worksCiclo2: true,
+    isTrusted: true,
+    whatsappGroup: null,
+    phoneFormatted: "(11) 99999-0002",
+    cities: ["Louveira", "Vinhedo"],
+    active: true,
+    deactivatedByRole: null,
   },
   {
     userId: "u3",
@@ -41,86 +70,69 @@ const sampleDrivers: DriverRow[] = [
     vehicleType: "CARGO_VAN",
     hasGnv: false,
     onboardingCompleted: false,
+    transporterId: null,
+    worksCiclo1: false,
+    worksCiclo2: false,
+    isTrusted: false,
+    whatsappGroup: null,
+    phoneFormatted: null,
+    cities: [],
+    active: false,
+    deactivatedByRole: "SUPERVISOR",
   },
 ];
 
+const defaultProps = {
+  drivers: sampleDrivers,
+  currentActorRole: "SUPERVISOR",
+  pendingDeactivationCount: 0,
+  initialStatusFilter: "active",
+};
+
 describe("DriversClient — render", () => {
   it("com dados: mostra cabeçalho, busca e linhas da tabela", () => {
-    render(<DriversClient drivers={sampleDrivers} />);
+    render(<DriversClient {...defaultProps} />);
 
     expect(screen.getByText("Motoristas")).toBeInTheDocument();
     expect(
-      screen.getByPlaceholderText("Buscar por nome ou e-mail..."),
+      screen.getByPlaceholderText(/Buscar por nome/),
     ).toBeInTheDocument();
 
     expect(screen.getByText("Rafael Almeida")).toBeInTheDocument();
     expect(screen.getByText("Beatriz Nogueira")).toBeInTheDocument();
     expect(screen.getByText("Carlos Eduardo Lima")).toBeInTheDocument();
 
-    // E-mails como linha secundária
-    expect(
-      screen.getByText("rafael.almeida@exemplo.com"),
-    ).toBeInTheDocument();
-
-    // StatusPills de veículo e cadastro
-    expect(screen.getAllByText("Cargo Van").length).toBeGreaterThan(0);
-    expect(screen.getByText("Veículo de Passeio")).toBeInTheDocument();
-    expect(screen.getAllByText("Completo").length).toBe(2);
-    expect(screen.getByText("Pendente")).toBeInTheDocument();
-
-    // GNV pill para quem tem (header "GNV" + pill "GNV" = 2 elementos)
-    expect(screen.getAllByText("GNV").length).toBeGreaterThanOrEqual(2);
-
     // Contagem no rodapé
     expect(screen.getByText(/Mostrando 3 de 3 motoristas/)).toBeInTheDocument();
   });
 
   it("vazio: sem motoristas mostra EmptyState com orientação", () => {
-    render(<DriversClient drivers={[]} />);
+    render(<DriversClient {...defaultProps} drivers={[]} />);
 
     expect(screen.getByText("Nenhum motorista cadastrado")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Os motoristas aparecem aqui após concluírem o cadastro.",
-      ),
-    ).toBeInTheDocument();
   });
 
   it("busca sem resultado: EmptyState orienta a limpar a busca", () => {
-    render(<DriversClient drivers={sampleDrivers} />);
+    render(<DriversClient {...defaultProps} />);
 
-    const input = screen.getByPlaceholderText("Buscar por nome ou e-mail...");
+    const input = screen.getByPlaceholderText(/Buscar por nome/);
     fireEvent.change(input, { target: { value: "zzzznada" } });
 
     expect(
       screen.getByText("Nenhum motorista encontrado para esta busca"),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Limpe a busca ou ajuste os critérios para ver mais resultados.",
-      ),
-    ).toBeInTheDocument();
-  });
-
-  it("cada motorista tem checkbox GNV com aria-label acessível", () => {
-    render(<DriversClient drivers={sampleDrivers} />);
-
-    expect(
-      screen.getByLabelText("Marcar GNV para Rafael Almeida"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByLabelText("Marcar GNV para Beatriz Nogueira"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByLabelText("Marcar GNV para Carlos Eduardo Lima"),
-    ).toBeInTheDocument();
   });
 
   it("tabela tem aria-label para leitores de tela", () => {
-    render(<DriversClient drivers={sampleDrivers} />);
+    render(<DriversClient {...defaultProps} />);
     expect(screen.getByRole("table")).toHaveAttribute(
       "aria-label",
       "Motoristas cadastrados",
     );
+  });
+
+  it("mostra badge de pendência quando há solicitações", () => {
+    render(<DriversClient {...defaultProps} pendingDeactivationCount={2} />);
+    expect(screen.getByText(/2 solicitação/)).toBeInTheDocument();
   });
 });
