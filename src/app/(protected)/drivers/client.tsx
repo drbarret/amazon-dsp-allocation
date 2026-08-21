@@ -10,11 +10,8 @@ import { SearchIcon, UsersIcon, PencilIcon, StarIcon } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { StatusPill } from "@/components/status-pill";
-import { setDriverGnvMarking } from "@/lib/driver-actions";
 import {
   saveDriverEdits,
-  requestDriverDeactivation,
-  reviewDeactivationRequest,
 } from "./actions";
 import { reactivateUser } from "@/app/(protected)/admin/users/actions";
 import type { DriverRow } from "./page";
@@ -60,10 +57,6 @@ export function DriversClient({
   const [editForm, setEditForm] = useState<Record<string, unknown>>({});
   const [saving, setSaving] = useState(false);
 
-  // Deactivation modal state
-  const [deactivatingDriver, setDeactivatingDriver] = useState<DriverRow | null>(null);
-  const [deactivationReason, setDeactivationReason] = useState("");
-
   useEffect(() => {
     const current = searchParams.get("status") ?? "active";
     if (current !== statusFilter) {
@@ -86,21 +79,6 @@ export function DriversClient({
       (d.transporterId ?? "").toLowerCase().includes(q)
     );
   });
-
-  function handleGnvToggle(userId: string, enabled: boolean) {
-    startTransition(async () => {
-      try {
-        const result = await setDriverGnvMarking(userId, enabled);
-        if (result.success) {
-          toast.success(enabled ? "GNV marcado." : "GNV removido.");
-        } else {
-          toast.error(result.error ?? "Erro ao alterar GNV.");
-        }
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao alterar GNV.");
-      }
-    });
-  }
 
   function openEditModal(driver: DriverRow) {
     setEditingDriver(driver);
@@ -146,39 +124,6 @@ export function DriversClient({
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao salvar.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleDeactivate() {
-    if (!deactivatingDriver) return;
-    setSaving(true);
-    try {
-      if (currentActorRole === "SUPERVISOR") {
-        const result = await requestDriverDeactivation(
-          deactivatingDriver.userId,
-          deactivationReason,
-        );
-        if (result.success) {
-          toast.success("Solicitação de desativação enviada para aprovação.");
-        } else {
-          toast.error(result.error ?? "Erro ao solicitar desativação.");
-        }
-      } else {
-        // AM / ADMIN deactivate directly
-        const result = await reactivateUser(deactivatingDriver.userId);
-        // Actually we need deactivateUser — but it's not exported for this context.
-        // Use the review flow instead: create a self-approved request.
-        // For simplicity, call requestDriverDeactivation won't work for AM.
-        // Let's use a direct approach: the AM should use /admin/users for direct deactivation.
-        toast.error("Use a página de Administração para desativar diretamente, ou aguarde a tela de aprovação.");
-      }
-      setDeactivatingDriver(null);
-      setDeactivationReason("");
-      router.refresh();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro.");
     } finally {
       setSaving(false);
     }
