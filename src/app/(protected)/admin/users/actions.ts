@@ -6,7 +6,7 @@ import { writeAuditLog } from "@/lib/audit";
 import { roleIsAtLeast } from "@/lib/authz";
 import { validateCityPreferences } from "@/lib/onboarding";
 import { isValidCnhDate } from "@/lib/cnh-validation";
-import { cancelPendingDeactivationRequests } from "@/app/(protected)/drivers/actions";
+import { cancelPendingDeactivationRequests } from "@/lib/deactivation";
 import { revalidatePath } from "next/cache";
 import type { UserRole, VehicleType } from "@/generated/prisma";
 

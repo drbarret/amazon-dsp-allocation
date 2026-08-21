@@ -6,6 +6,7 @@ import { writeAuditLog } from "@/lib/audit";
 import { roleIsAtLeast } from "@/lib/authz";
 import { encrypt } from "@/lib/crypto";
 import { validateCityPreferences } from "@/lib/onboarding";
+import { cancelPendingDeactivationRequests } from "@/lib/deactivation";
 import { revalidatePath } from "next/cache";
 import type { UserRole, VehicleType } from "@/generated/prisma";
 
@@ -497,50 +498,6 @@ export async function reviewDeactivationRequest(
   revalidatePath("/drivers");
   revalidatePath("/drivers/deactivation-requests");
   return { success: true };
-}
-
-/**
- * Cancel all PENDING deactivation requests for a driver.
- * Called when a driver is deactivated/reactivated through another path
- * (e.g., /admin/users). This prevents orphaned pending requests.
- *
- * Can be called with an optional transaction client for atomicity.
- */
-export async function cancelPendingDeactivationRequests(
-  driverUserId: string,
-  actorId: string,
-  reason: string,
-  tx?: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
-): Promise<void> {
-  const db = tx ?? prisma;
-
-  const pendingRequests = await db.deactivationRequest.findMany({
-    where: { driverUserId, status: "PENDING" },
-    select: { id: true },
-  });
-
-  if (pendingRequests.length === 0) return;
-
-  await db.deactivationRequest.updateMany({
-    where: { driverUserId, status: "PENDING" },
-    data: {
-      status: "REJECTED",
-      reviewedAt: new Date(),
-      reviewNotes: reason,
-    },
-  });
-
-  // Audit each cancellation (only outside transaction to avoid nested issues)
-  if (!tx) {
-    for (const req of pendingRequests) {
-      await writeAuditLog({
-        eventType: "DEACTIVATION_REQUEST_CANCELLED",
-        actorId,
-        targetUserId: driverUserId,
-        metadata: { requestId: req.id, reason },
-      });
-    }
-  }
 }
 
 // ---------------------------------------------------------------------------

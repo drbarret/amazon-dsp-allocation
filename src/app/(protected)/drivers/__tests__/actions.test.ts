@@ -5,8 +5,8 @@ import {
   saveDriverEdits,
   requestDriverDeactivation,
   reviewDeactivationRequest,
-  cancelPendingDeactivationRequests,
 } from "../actions";
+import { cancelPendingDeactivationRequests } from "@/lib/deactivation";
 
 // ---------------------------------------------------------------------------
 // Integration tests for driver edit and deactivation request actions.
@@ -455,5 +455,62 @@ describe.skipIf(SKIP_INTEGRATION)("driver edit and deactivation request actions"
       orderBy: { updatedAt: "desc" },
     });
     expect(cancelled?.reviewNotes).toContain("teste externo");
+  });
+
+  it("cancels pending requests inside $transaction with tx client (production regression)", async () => {
+    if (!dbReady) return;
+
+    // Create a fresh PENDING request
+    mockAuth.mockResolvedValue(session("SUPERVISOR", supervisorId));
+    // Ensure driver is active
+    await prisma.user.update({
+      where: { id: driverUserId },
+      data: { active: true, deactivatedById: null, deactivatedByRole: null },
+    });
+    // Clear any existing pending
+    await prisma.deactivationRequest.updateMany({
+      where: { driverUserId, status: "PENDING" },
+      data: { status: "REJECTED" },
+    });
+
+    const reqResult = await requestDriverDeactivation(driverUserId, "TX test pending");
+    expect(reqResult.success).toBe(true);
+
+    const pendingBefore = await prisma.deactivationRequest.count({
+      where: { driverUserId, status: "PENDING" },
+    });
+    expect(pendingBefore).toBe(1);
+
+    // Now simulate what requestDriverDeactivation does for AM/ADMIN:
+    // call cancelPendingDeactivationRequests INSIDE a $transaction with tx
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: driverUserId },
+        data: { active: false, deactivatedById: amId, deactivatedByRole: "ACCOUNT_MANAGER" },
+      });
+      await cancelPendingDeactivationRequests(
+        driverUserId,
+        amId,
+        "Cancelado: desativação direta via transação",
+        tx,
+      );
+    });
+
+    // The PENDING must have been cancelled
+    const pendingAfter = await prisma.deactivationRequest.count({
+      where: { driverUserId, status: "PENDING" },
+    });
+    expect(pendingAfter).toBe(0);
+
+    // And there should be a REJECTED entry with the cancellation reason
+    const cancelled = await prisma.deactivationRequest.findFirst({
+      where: { driverUserId, status: "REJECTED" },
+      orderBy: { updatedAt: "desc" },
+    });
+    expect(cancelled?.reviewNotes).toContain("desativação direta via transação");
+
+    // Driver must be inactive
+    const driver = await prisma.user.findUnique({ where: { id: driverUserId } });
+    expect(driver?.active).toBe(false);
   });
 });
