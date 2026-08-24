@@ -17,7 +17,6 @@ import Link from "next/link";
 import {
   CalendarClockIcon,
   CalendarDaysIcon,
-  ClipboardListIcon,
   ClockIcon,
   IdCardIcon,
   TriangleAlertIcon,
