@@ -372,7 +372,7 @@ test.describe("clipped text sweep (all main screens, all widths)", () => {
     }
   });
 
-  const SUPERVISOR_PATHS = ["/dashboard", "/drivers", "/drivers/deactivation-requests", "/cnh", "/dispatch", "/behavior", "/vagas"];
+  const SUPERVISOR_PATHS = ["/dashboard", "/drivers", "/drivers/deactivation-requests", "/cnh", "/dispatch", "/vagas"];
   const WIDTHS: [number, number][] = [
     [390, 844],
     [768, 1024],

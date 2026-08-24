@@ -56,13 +56,6 @@ const SHORTCUTS: {
     iconClass: "bg-info-bg text-info-fg",
   },
   {
-    href: "/behavior",
-    title: "Comportamento",
-    desc: "Infrações, reincidência e fila de aprovação",
-    icon: ClipboardListIcon,
-    iconClass: "bg-warning-bg text-warning-fg",
-  },
-  {
     href: "/drivers",
     title: "Motoristas",
     desc: "Gerenciar cadastro, GNV e categoria de veículo",

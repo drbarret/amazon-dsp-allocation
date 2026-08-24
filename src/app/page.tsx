@@ -20,7 +20,7 @@ export default async function Home() {
             Sistema de escala e alocação de motoristas
           </h1>
           <p className="text-sm text-muted-foreground">
-            Escala semanal, dispatch de vagas, comportamento e cobrança de CNH
+            Escala semanal, dispatch de vagas e cobrança de CNH
             da sua operação Amazon DSP.
           </p>
         </div>

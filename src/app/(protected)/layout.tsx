@@ -38,7 +38,6 @@ export default async function ProtectedLayout({
     { href: "/dashboard", label: "Início", show: true },
     { href: "/disponibilidades", label: "Disponibilidades", show: roleIsAtLeast(role, "SUPERVISOR") },
     { href: "/vagas", label: "Vagas", show: roleIsAtLeast(role, "SUPERVISOR") },
-    { href: "/behavior", label: "Comportamento", show: roleIsAtLeast(role, "SUPERVISOR") },
     { href: "/drivers", label: "Motoristas", show: roleIsAtLeast(role, "SUPERVISOR") },
     { href: "/cnh", label: "Cobrar CNH", show: roleIsAtLeast(role, "SUPERVISOR") },
     { href: "/admin/users", label: "Usuários", show: roleIsAtLeast(role, "ACCOUNT_MANAGER") },

@@ -133,9 +133,9 @@ describe("Dashboard — visão SUPERVISOR+", () => {
     expect(screen.getByText("Pendente")).toBeInTheDocument();
   });
 
-  it("mostra atalhos para as 4 telas operacionais", async () => {
+  it("mostra atalhos para as 3 telas operacionais", async () => {
     await renderDashboard("SUPERVISOR");
-    for (const label of ["Disponibilidades", "Comportamento", "Motoristas", "Cobrar CNH"]) {
+    for (const label of ["Disponibilidades", "Motoristas", "Cobrar CNH"]) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
   });

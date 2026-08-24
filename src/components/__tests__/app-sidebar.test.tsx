@@ -20,7 +20,6 @@ beforeEach(() => {
 const allItems: NavItem[] = [
   { href: "/dashboard", label: "Início", show: true },
   { href: "/disponibilidades", label: "Disponibilidades", show: true },
-  { href: "/behavior", label: "Comportamento", show: true },
   { href: "/drivers", label: "Motoristas", show: true },
   { href: "/cnh", label: "Cobrar CNH", show: true },
   { href: "/admin/users", label: "Usuários", show: true },
@@ -81,22 +80,20 @@ describe("AppSidebar — itens por papel", () => {
     expect(screen.queryByRole("link", { name: /Usuários/ })).toBeNull();
   });
 
-  it("SUPERVISOR vê as 5 telas operacionais, mas não Usuários", () => {
+  it("SUPERVISOR vê as 4 telas operacionais, mas não Usuários", () => {
     renderSidebar(supervisorItems);
     expect(screen.getAllByRole("link", { name: /Início/ })).not.toHaveLength(0);
     expect(screen.getAllByRole("link", { name: /Disponibilidades/ })).not.toHaveLength(0);
-    expect(screen.getAllByRole("link", { name: /Comportamento/ })).not.toHaveLength(0);
     expect(screen.getAllByRole("link", { name: /Motoristas/ })).not.toHaveLength(0);
     expect(screen.getAllByRole("link", { name: /Cobrar CNH/ })).not.toHaveLength(0);
     expect(screen.queryByRole("link", { name: /Usuários/ })).toBeNull();
   });
 
-  it("ADMIN/ACCOUNT_MANAGER veem todos os 6 itens", () => {
+  it("ADMIN/ACCOUNT_MANAGER veem todos os 5 itens", () => {
     renderSidebar(allItems);
     for (const label of [
       "Início",
       "Disponibilidades",
-      "Comportamento",
       "Motoristas",
       "Cobrar CNH",
       "Usuários",

@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   CalendarClockIcon,
-  ClipboardListIcon,
   GaugeIcon,
   IdCardIcon,
   LayoutGridIcon,
@@ -27,7 +26,6 @@ const navIcons: Record<string, LucideIcon> = {
   "/dashboard": GaugeIcon,
   "/disponibilidades": CalendarClockIcon,
   "/vagas": LayoutGridIcon,
-  "/behavior": ClipboardListIcon,
   "/drivers": UsersIcon,
   "/cnh": IdCardIcon,
   "/admin/users": UsersIcon,
