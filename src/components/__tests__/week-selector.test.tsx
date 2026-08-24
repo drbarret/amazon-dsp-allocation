@@ -29,6 +29,14 @@ describe("WeekSelector", () => {
     expect(onChange).toHaveBeenCalledWith("w2");
   });
 
+  it("renders status when provided", () => {
+    const weeksWithStatus: WeekOption[] = [
+      { id: "w1", weekKey: "Semana 33", startDate: "16 de ago.", endDate: "22 de ago.", status: "PLANNING" },
+    ];
+    render(<WeekSelector weeks={weeksWithStatus} value="w1" onChange={() => {}} />);
+    expect(screen.getByText(/PLANNING/)).toBeInTheDocument();
+  });
+
   it("estado vazio mostra mensagem em vez do select", () => {
     render(<WeekSelector weeks={[]} value="" onChange={() => {}} />);
     expect(screen.getByText("Nenhuma semana cadastrada")).toBeInTheDocument();

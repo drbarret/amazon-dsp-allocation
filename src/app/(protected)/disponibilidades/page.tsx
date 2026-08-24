@@ -60,6 +60,7 @@ export default async function DisponibilidadesPage() {
         startDate: formatDate(w.startDate),
         endDate: formatDate(w.endDate),
         transportCompanyId: w.transportCompanyId,
+        status: w.status,
       }))}
       initialWeekId={defaultWeekId(weeks)}
       hasTransportCompany={hasTransportCompany}

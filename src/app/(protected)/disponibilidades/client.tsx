@@ -25,6 +25,7 @@ import {
   Building2Icon,
   PencilIcon,
   Trash2Icon,
+  LockIcon,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { ActionBar } from "@/components/action-bar";
@@ -50,6 +51,7 @@ interface WeekOption {
   startDate: string;
   endDate: string;
   transportCompanyId: string;
+  status?: string;
 }
 
 interface CompanyOption {
@@ -140,6 +142,8 @@ export function DisponibilidadesClient({
     () => filteredWeeks.find((w) => w.id === selectedWeekId) ?? null,
     [filteredWeeks, selectedWeekId]
   );
+
+  const isSelectedWeekClosed = selectedWeek?.status === "CLOSED";
 
   useEffect(() => {
     loadRows(selectedWeekId);
@@ -507,7 +511,12 @@ export function DisponibilidadesClient({
                 variant="ghost"
                 size="sm"
                 onClick={() => startEditing(d)}
-                disabled={isPending || editingRowId !== null}
+                disabled={isPending || editingRowId !== null || isSelectedWeekClosed}
+                title={
+                  isSelectedWeekClosed
+                    ? "Semana fechada — edição desabilitada"
+                    : undefined
+                }
                 aria-label={`Editar ${d.name ?? d.email}`}
               >
                 <PencilIcon className="mr-1 size-3.5" />
@@ -593,7 +602,12 @@ export function DisponibilidadesClient({
         </Button>
         <Button
           onClick={() => setDialogOpen(true)}
-          disabled={isPending || isImporting || !selectedWeekId}
+          disabled={isPending || isImporting || !selectedWeekId || isSelectedWeekClosed}
+          title={
+            isSelectedWeekClosed
+              ? "Semana fechada — importação desabilitada"
+              : undefined
+          }
         >
           <UploadIcon className="mr-2 size-4" />
           Importar disponibilidades (.xlsx)
@@ -601,12 +615,29 @@ export function DisponibilidadesClient({
         <Button
           variant="destructive"
           onClick={() => setClearDialogOpen(true)}
-          disabled={isPending || isImporting || !selectedWeekId || rows.length === 0}
+          disabled={
+            isPending || isImporting || !selectedWeekId || rows.length === 0 || isSelectedWeekClosed
+          }
+          title={
+            isSelectedWeekClosed
+              ? "Semana fechada — limpeza desabilitada"
+              : undefined
+          }
         >
           <Trash2Icon className="mr-2 size-4" />
           Limpar semana
         </Button>
       </ActionBar>
+
+      {isSelectedWeekClosed && (
+        <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/50 p-3 text-sm text-muted-foreground">
+          <LockIcon className="size-4 shrink-0" />
+          <span>
+            Esta semana está <strong>FECHADA</strong>. Importação, edição inline e
+            limpeza de disponibilidades estão desabilitadas.
+          </span>
+        </div>
+      )}
 
       {lastResult && (
         <div className="rounded-xl border border-border bg-card p-4 shadow-sm">

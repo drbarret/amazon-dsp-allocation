@@ -8,6 +8,7 @@ export type WeekOption = {
   weekKey: string;
   startDate: string;
   endDate: string;
+  status?: string;
 };
 
 /**
@@ -55,6 +56,7 @@ export function WeekSelector({
         {weeks.map((w) => (
           <option key={w.id} value={w.id}>
             {w.weekKey} · {w.startDate} – {w.endDate}
+            {w.status ? ` · ${w.status}` : ""}
           </option>
         ))}
       </select>
