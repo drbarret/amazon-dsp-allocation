@@ -2,7 +2,6 @@ import { prisma } from "@/lib/prisma";
 import {
   getNextIsoWeek,
   toWeekKey,
-  type IsoWeek,
 } from "@/lib/week-utils";
 import type { DispatchWeek } from "@/generated/prisma";
 
