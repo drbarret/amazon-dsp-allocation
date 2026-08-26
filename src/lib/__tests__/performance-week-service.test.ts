@@ -2,8 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { ensurePreviousDispatchWeek } from "@/lib/performance-week-service";
 import { prisma } from "@/lib/prisma";
 import { getPreviousIsoWeek } from "@/lib/week-utils";
+import { SKIP_INTEGRATION } from "@/lib/test-db-gate";
 
-describe("ensurePreviousDispatchWeek", () => {
+describe.skipIf(SKIP_INTEGRATION)("ensurePreviousDispatchWeek", () => {
   let companyId: string;
 
   beforeEach(async () => {
