@@ -21,6 +21,7 @@ const allItems: NavItem[] = [
   { href: "/dashboard", label: "Início", show: true },
   { href: "/disponibilidades", label: "Disponibilidades", show: true },
   { href: "/drivers", label: "Motoristas", show: true },
+  { href: "/performance", label: "Performance", show: true },
   { href: "/cnh", label: "Cobrar CNH", show: true },
   { href: "/admin/users", label: "Usuários", show: true },
 ];
@@ -45,10 +46,12 @@ function renderSidebar(items: NavItem[]) {
 }
 
 describe("AppSidebar — item ativo", () => {
-  it("a rota atual recebe aria-current=\"page\" e as demais não", () => {
+  it('a rota atual recebe aria-current="page" e as demais não', () => {
     mockPathname.mockReturnValue("/disponibilidades");
     renderSidebar(allItems);
-    const disponibilidades = screen.getAllByRole("link", { name: /Disponibilidades/ })[0];
+    const disponibilidades = screen.getAllByRole("link", {
+      name: /Disponibilidades/,
+    })[0];
     expect(disponibilidades).toHaveAttribute("aria-current", "page");
     const inicio = screen.getAllByRole("link", { name: /Início/ })[0];
     expect(inicio).not.toHaveAttribute("aria-current");
@@ -80,21 +83,31 @@ describe("AppSidebar — itens por papel", () => {
     expect(screen.queryByRole("link", { name: /Usuários/ })).toBeNull();
   });
 
-  it("SUPERVISOR vê as 4 telas operacionais, mas não Usuários", () => {
+  it("SUPERVISOR vê as 5 telas operacionais, mas não Usuários", () => {
     renderSidebar(supervisorItems);
     expect(screen.getAllByRole("link", { name: /Início/ })).not.toHaveLength(0);
-    expect(screen.getAllByRole("link", { name: /Disponibilidades/ })).not.toHaveLength(0);
-    expect(screen.getAllByRole("link", { name: /Motoristas/ })).not.toHaveLength(0);
-    expect(screen.getAllByRole("link", { name: /Cobrar CNH/ })).not.toHaveLength(0);
+    expect(
+      screen.getAllByRole("link", { name: /Disponibilidades/ }),
+    ).not.toHaveLength(0);
+    expect(
+      screen.getAllByRole("link", { name: /Motoristas/ }),
+    ).not.toHaveLength(0);
+    expect(
+      screen.getAllByRole("link", { name: /Performance/ }),
+    ).not.toHaveLength(0);
+    expect(
+      screen.getAllByRole("link", { name: /Cobrar CNH/ }),
+    ).not.toHaveLength(0);
     expect(screen.queryByRole("link", { name: /Usuários/ })).toBeNull();
   });
 
-  it("ADMIN/ACCOUNT_MANAGER veem todos os 5 itens", () => {
+  it("ADMIN/ACCOUNT_MANAGER veem todos os 6 itens", () => {
     renderSidebar(allItems);
     for (const label of [
       "Início",
       "Disponibilidades",
       "Motoristas",
+      "Performance",
       "Cobrar CNH",
       "Usuários",
     ]) {

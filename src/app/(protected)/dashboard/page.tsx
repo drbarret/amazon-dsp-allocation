@@ -21,6 +21,7 @@ import {
   IdCardIcon,
   TriangleAlertIcon,
   TruckIcon,
+  TrophyIcon,
   UsersIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -60,6 +61,13 @@ const SHORTCUTS: {
     desc: "Gerenciar cadastro, GNV e categoria de veículo",
     icon: UsersIcon,
     iconClass: "bg-success-bg text-success-fg",
+  },
+  {
+    href: "/performance",
+    title: "Performance",
+    desc: "Importar e acompanhar performance dos motoristas",
+    icon: TrophyIcon,
+    iconClass: "bg-purple-bg text-purple-fg",
   },
   {
     href: "/cnh",

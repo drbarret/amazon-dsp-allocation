@@ -37,7 +37,13 @@ import { hkdf } from "@panva/hkdf";
 import pg from "pg";
 import { randomUUID } from "node:crypto";
 
-try { process.loadEnvFile(".env.local"); } catch { try { process.loadEnvFile(".env"); } catch {} }
+try {
+  process.loadEnvFile(".env.local");
+} catch {
+  try {
+    process.loadEnvFile(".env");
+  } catch {}
+}
 
 const SKIP_E2E = (process.env.SKIP_E2E_TESTS ?? "").trim() === "1";
 const AUTH_SECRET = process.env.AUTH_SECRET;
@@ -117,7 +123,10 @@ async function measureClipped(
   ]);
   const page = await context.newPage();
   try {
-    await page.goto(`${BASE_URL}${path}`, { waitUntil: "networkidle", timeout: 30_000 });
+    await page.goto(`${BASE_URL}${path}`, {
+      waitUntil: "networkidle",
+      timeout: 30_000,
+    });
     // Hide the Next.js dev overlay so its chrome is never measured.
     await page.addStyleTag({
       content: `nextjs-portal, [data-nextjs-toast], [data-nextjs-dialog-overlay] { display: none !important; }`,
@@ -167,7 +176,12 @@ async function measureClipped(
       const describe = (el: Element): ClipFinding => {
         const r = el.getBoundingClientRect();
         return {
-          tag: `${el.tagName.toLowerCase()}.${String((el as HTMLElement).className).split(" ").slice(0, 3).join(".")}`,
+          tag: `${el.tagName.toLowerCase()}.${String(
+            (el as HTMLElement).className,
+          )
+            .split(" ")
+            .slice(0, 3)
+            .join(".")}`,
           text: allText(el),
           scrollW: el.scrollWidth,
           clientW: el.clientWidth,
@@ -187,7 +201,18 @@ async function measureClipped(
       for (const el of candidates) {
         if (!isVisible(el)) continue;
         const tag = el.tagName;
-        if (["SCRIPT", "STYLE", "SVG", "PATH", "INPUT", "TEXTAREA", "SELECT", "OPTION"].includes(tag)) {
+        if (
+          [
+            "SCRIPT",
+            "STYLE",
+            "SVG",
+            "PATH",
+            "INPUT",
+            "TEXTAREA",
+            "SELECT",
+            "OPTION",
+          ].includes(tag)
+        ) {
           continue;
         }
         const text = ownText(el);
@@ -248,7 +273,9 @@ async function measureClipped(
 
       // C. empty states must be fully inside the viewport.
       const emptyStatesOut: ClipReport["emptyStatesOut"] = [];
-      for (const es of Array.from(document.querySelectorAll('[data-slot="empty-state"]'))) {
+      for (const es of Array.from(
+        document.querySelectorAll('[data-slot="empty-state"]'),
+      )) {
         if (!isVisible(es)) continue;
         const r = es.getBoundingClientRect();
         if (r.right > vw + TOL || r.left < -TOL) {
@@ -261,22 +288,42 @@ async function measureClipped(
         }
       }
 
-      return { vw, clippedNoEllipsis, beyondViewport, emptyStatesOut, tableCellsBeyond };
+      return {
+        vw,
+        clippedNoEllipsis,
+        beyondViewport,
+        emptyStatesOut,
+        tableCellsBeyond,
+      };
     });
   } finally {
     await context.close();
   }
 }
 
-function fmt(list: { tag: string; text: string; right?: number; scrollW?: number; clientW?: number }[]): string {
+function fmt(
+  list: {
+    tag: string;
+    text: string;
+    right?: number;
+    scrollW?: number;
+    clientW?: number;
+  }[],
+): string {
   return list
     .slice(0, 8)
-    .map((f) => `<${f.tag}> "${f.text}" (right=${f.right}, scrollW=${f.scrollW}, clientW=${f.clientW})`)
+    .map(
+      (f) =>
+        `<${f.tag}> "${f.text}" (right=${f.right}, scrollW=${f.scrollW}, clientW=${f.clientW})`,
+    )
     .join("\n  ");
 }
 
 test.describe("clipped text sweep (all main screens, all widths)", () => {
-  test.skip(SKIP_E2E, "SKIP_E2E_TESTS=1 set — explicit opt-out (CI without DB)");
+  test.skip(
+    SKIP_E2E,
+    "SKIP_E2E_TESTS=1 set — explicit opt-out (CI without DB)",
+  );
 
   let client: pg.Client;
   let supToken: string;
@@ -293,10 +340,17 @@ test.describe("clipped text sweep (all main screens, all widths)", () => {
     await client.connect();
     await client.query(`SELECT 1`);
 
-    await client.query(`DELETE FROM "allowed_emails" WHERE email = ANY($1)`, [ALL_EMAILS]);
-    await client.query(`DELETE FROM "driver_profiles" WHERE "userId" = ANY($1)`, [ALL_IDS]);
+    await client.query(`DELETE FROM "allowed_emails" WHERE email = ANY($1)`, [
+      ALL_EMAILS,
+    ]);
+    await client.query(
+      `DELETE FROM "driver_profiles" WHERE "userId" = ANY($1)`,
+      [ALL_IDS],
+    );
     await client.query(`DELETE FROM "users" WHERE id = ANY($1)`, [ALL_IDS]);
-    await client.query(`DELETE FROM "transport_companies" WHERE id = $1`, [TCID]);
+    await client.query(`DELETE FROM "transport_companies" WHERE id = $1`, [
+      TCID,
+    ]);
     await client.query(
       `INSERT INTO "transport_companies" ("id", "name", "createdAt", "updatedAt")
        VALUES ($1, 'E2E Clip Transport', now(), now())`,
@@ -363,16 +417,33 @@ test.describe("clipped text sweep (all main screens, all widths)", () => {
 
   test.afterAll(async () => {
     if (client) {
-      await client.query(`DELETE FROM "allowed_emails" WHERE email = ANY($1)`, [ALL_EMAILS]);
-      await client.query(`DELETE FROM "driver_profiles" WHERE "userId" = ANY($1)`, [ALL_IDS]);
+      await client.query(`DELETE FROM "allowed_emails" WHERE email = ANY($1)`, [
+        ALL_EMAILS,
+      ]);
+      await client.query(
+        `DELETE FROM "driver_profiles" WHERE "userId" = ANY($1)`,
+        [ALL_IDS],
+      );
       await client.query(`DELETE FROM "users" WHERE id = ANY($1)`, [ALL_IDS]);
-      await client.query(`DELETE FROM "dispatch_weeks" WHERE id = $1`, [WEEKID]);
-      await client.query(`DELETE FROM "transport_companies" WHERE id = $1`, [TCID]);
+      await client.query(`DELETE FROM "dispatch_weeks" WHERE id = $1`, [
+        WEEKID,
+      ]);
+      await client.query(`DELETE FROM "transport_companies" WHERE id = $1`, [
+        TCID,
+      ]);
       await client.end();
     }
   });
 
-  const SUPERVISOR_PATHS = ["/dashboard", "/drivers", "/drivers/deactivation-requests", "/cnh", "/dispatch", "/vagas"];
+  const SUPERVISOR_PATHS = [
+    "/dashboard",
+    "/drivers",
+    "/drivers/deactivation-requests",
+    "/cnh",
+    "/dispatch",
+    "/vagas",
+    "/performance",
+  ];
   const WIDTHS: [number, number][] = [
     [390, 844],
     [768, 1024],

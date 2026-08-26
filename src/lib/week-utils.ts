@@ -4,6 +4,7 @@ import {
   getISOWeek,
   getISOWeekYear,
   startOfISOWeek,
+  subWeeks,
 } from "date-fns";
 import { UTCDate } from "@date-fns/utc";
 
@@ -22,7 +23,7 @@ function toUtcDate(date: Date): UTCDate {
     date.getUTCHours(),
     date.getUTCMinutes(),
     date.getUTCSeconds(),
-    date.getUTCMilliseconds()
+    date.getUTCMilliseconds(),
   );
 }
 
@@ -44,6 +45,13 @@ export function getCurrentIsoWeek(date: Date = new Date()): IsoWeek {
  */
 export function getNextIsoWeek(date: Date = new Date()): IsoWeek {
   return getCurrentIsoWeek(addWeeks(toUtcDate(date), 1));
+}
+
+/**
+ * Returns ISO-week information for the week before the given date, evaluated in UTC.
+ */
+export function getPreviousIsoWeek(date: Date = new Date()): IsoWeek {
+  return getCurrentIsoWeek(subWeeks(toUtcDate(date), 1));
 }
 
 /**

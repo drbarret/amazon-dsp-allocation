@@ -206,6 +206,7 @@ model TransportCompany {
   vacancyPrograms VacancyProgram[]
   dispatchWeeks   DispatchWeek[]
   vacancyBlocks   VacancyBlock[]
+  performanceImports PerformanceImport[]
 
   @@map("transport_companies")
 }
@@ -315,6 +316,7 @@ model DriverProfile {
   favoriteFlags       FavoriteDriver[]
   infractions         DriverInfraction[]
   driverScores        DriverScore[]
+  performanceSnapshots DriverPerformanceSnapshot[]
   assignments         DispatchAssignment[]
   cnhReminders        CnhReminder[]
 
@@ -652,6 +654,56 @@ model DriverScore {
   @@map("driver_scores")
 }
 
+// ---------- Performance ----------
+
+model PerformanceImport {
+  id                 String    @id @default(uuid())
+  dispatchWeekId     String?
+  weekKey            String
+  year               Int
+  weekNumber         Int
+  transportCompanyId String
+  fileName           String
+  importedById       String
+  status             String    @default("PROCESSING") // PROCESSING, COMPLETED, FAILED
+  errors             Json?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  dispatchWeek     DispatchWeek?               @relation(fields: [dispatchWeekId], references: [id], onDelete: SetNull)
+  transportCompany TransportCompany            @relation(fields: [transportCompanyId], references: [id])
+  snapshots        DriverPerformanceSnapshot[]
+
+  @@index([dispatchWeekId])
+  @@index([weekKey])
+  @@index([status])
+  @@index([transportCompanyId])
+  @@map("performance_imports")
+}
+
+model DriverPerformanceSnapshot {
+  id                  String                  @id @default(uuid())
+  performanceImportId String
+  driverProfileId     String?
+  transporterId       String
+  name                String
+  score               Int
+  deliveredPackages   Int
+  dcr                 Float // 0-1 decimal parsed from percentage
+  dnr                 Int
+  insucessos          Int // calculated: deliveredPackages - (dcr * deliveredPackages)
+  classification      ScorecardClassification
+  createdAt           DateTime                @default(now())
+
+  performanceImport PerformanceImport @relation(fields: [performanceImportId], references: [id], onDelete: Cascade)
+  driverProfile     DriverProfile?    @relation(fields: [driverProfileId], references: [id], onDelete: SetNull)
+
+  @@index([performanceImportId])
+  @@index([driverProfileId])
+  @@index([transporterId])
+  @@map("driver_performance_snapshots")
+}
+
 // ---------- Behavior & Favorites ----------
 
 model FavoriteDriver {
@@ -754,6 +806,7 @@ model DispatchWeek {
   vacancies        Vacancy[]
   driverAvailabilities DriverAvailability[]
   blockDailyVacancies  BlockDailyVacancy[]
+  performanceImports   PerformanceImport[]
 
   @@unique([transportCompanyId, year, weekNumber])
   @@index([weekKey])

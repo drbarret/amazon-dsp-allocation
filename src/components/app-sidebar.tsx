@@ -9,6 +9,7 @@ import {
   IdCardIcon,
   LayoutGridIcon,
   MenuIcon,
+  TrophyIcon,
   UsersIcon,
   XIcon,
   type LucideIcon,
@@ -27,6 +28,7 @@ const navIcons: Record<string, LucideIcon> = {
   "/disponibilidades": CalendarClockIcon,
   "/vagas": LayoutGridIcon,
   "/drivers": UsersIcon,
+  "/performance": TrophyIcon,
   "/cnh": IdCardIcon,
   "/admin/users": UsersIcon,
 };
@@ -36,12 +38,12 @@ function BrandBlock() {
     <div className="border-b border-white/10 px-4 pt-5 pb-4">
       <Link
         href="/dashboard"
-        className="flex items-center gap-2 text-lg leading-7 font-bold text-sidebar-fg outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-md"
+        className="text-sidebar-fg focus-visible:ring-brand flex items-center gap-2 rounded-md text-lg leading-7 font-bold outline-none focus-visible:ring-2"
       >
-        <CalendarClockIcon className="size-5 text-brand" />
+        <CalendarClockIcon className="text-brand size-5" />
         Amazon DSP
       </Link>
-      <p className="mt-0.5 text-xs leading-4 text-sidebar-sub">
+      <p className="text-sidebar-sub mt-0.5 text-xs leading-4">
         Escala e alocação de motoristas
       </p>
     </div>
@@ -73,8 +75,9 @@ function NavLinks({
                   onClick={onNavigate}
                   aria-current={isActive ? "page" : undefined}
                   className={cn(
-                    "flex h-11 items-center gap-3 rounded-lg px-4 text-sm leading-5 font-medium text-sidebar-item transition-colors outline-none hover:bg-sidebar-item-hover-bg hover:text-sidebar-fg focus-visible:ring-2 focus-visible:ring-brand",
-                    isActive && "bg-brand text-brand-foreground hover:bg-brand hover:text-brand-foreground",
+                    "text-sidebar-item hover:bg-sidebar-item-hover-bg hover:text-sidebar-fg focus-visible:ring-brand flex h-11 items-center gap-3 rounded-lg px-4 text-sm leading-5 font-medium transition-colors outline-none focus-visible:ring-2",
+                    isActive &&
+                      "bg-brand text-brand-foreground hover:bg-brand hover:text-brand-foreground",
                   )}
                 >
                   <Icon className="size-4 shrink-0" />
@@ -131,27 +134,27 @@ export function AppSidebar({
   return (
     <>
       {/* Barra superior mobile */}
-      <div className="sticky top-0 z-40 flex items-center gap-3 bg-sidebar-bg px-4 py-2.5 text-sidebar-fg lg:hidden">
+      <div className="bg-sidebar-bg text-sidebar-fg sticky top-0 z-40 flex items-center gap-3 px-4 py-2.5 lg:hidden">
         <button
           type="button"
           aria-label="Abrir menu de navegação"
           aria-expanded={drawerOpen}
           onClick={() => setDrawerOpen(true)}
-          className="flex size-9 items-center justify-center rounded-lg border border-white/20 outline-none focus-visible:ring-2 focus-visible:ring-brand"
+          className="focus-visible:ring-brand flex size-9 items-center justify-center rounded-lg border border-white/20 outline-none focus-visible:ring-2"
         >
           <MenuIcon className="size-5" />
         </button>
         <Link
           href="/dashboard"
-          className="flex items-center gap-2 text-base font-bold outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-md"
+          className="focus-visible:ring-brand flex items-center gap-2 rounded-md text-base font-bold outline-none focus-visible:ring-2"
         >
-          <CalendarClockIcon className="size-5 text-brand" />
+          <CalendarClockIcon className="text-brand size-5" />
           Amazon DSP
         </Link>
       </div>
 
       {/* Sidebar fixa desktop */}
-      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col bg-sidebar-bg text-sidebar-fg lg:flex">
+      <aside className="bg-sidebar-bg text-sidebar-fg sticky top-0 hidden h-screen w-64 shrink-0 flex-col lg:flex">
         <BrandBlock />
         <NavLinks items={items} pathname={pathname} />
         <div className="px-4 pb-3">
@@ -175,18 +178,18 @@ export function AppSidebar({
             role="dialog"
             aria-modal="true"
             aria-label="Menu de navegação"
-            className="fixed inset-y-0 left-0 z-50 flex w-72 flex-col bg-sidebar-bg text-sidebar-fg"
+            className="bg-sidebar-bg text-sidebar-fg fixed inset-y-0 left-0 z-50 flex w-72 flex-col"
           >
             <div className="flex items-center justify-between border-b border-white/10 px-4 pt-5 pb-4">
               <span className="flex items-center gap-2 text-lg font-bold">
-                <CalendarClockIcon className="size-5 text-brand" />
+                <CalendarClockIcon className="text-brand size-5" />
                 Amazon DSP
               </span>
               <button
                 type="button"
                 aria-label="Fechar menu de navegação"
                 onClick={() => setDrawerOpen(false)}
-                className="flex size-9 items-center justify-center rounded-lg text-sidebar-item outline-none hover:bg-sidebar-item-hover-bg focus-visible:ring-2 focus-visible:ring-brand"
+                className="text-sidebar-item hover:bg-sidebar-item-hover-bg focus-visible:ring-brand flex size-9 items-center justify-center rounded-lg outline-none focus-visible:ring-2"
               >
                 <XIcon className="size-5" />
               </button>
