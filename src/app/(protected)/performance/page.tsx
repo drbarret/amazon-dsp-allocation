@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { roleIsAtLeast } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
+import { getCurrentIsoWeek, getPreviousIsoWeek } from "@/lib/week-utils";
 import { PerformanceClient } from "./client";
 import type { UserRole } from "@/generated/prisma";
 
@@ -9,6 +10,8 @@ export const dynamic = "force-dynamic";
 interface WeekOption {
   id: string;
   weekKey: string;
+  year: number;
+  weekNumber: number;
   startDate: string;
   endDate: string;
   transportCompanyId: string;
@@ -67,6 +70,8 @@ export default async function PerformancePage() {
     select: {
       id: true,
       weekKey: true,
+      year: true,
+      weekNumber: true,
       startDate: true,
       endDate: true,
       transportCompanyId: true,
@@ -77,23 +82,34 @@ export default async function PerformancePage() {
   const weekOptions: WeekOption[] = weeks.map((w) => ({
     id: w.id,
     weekKey: w.weekKey,
+    year: w.year,
+    weekNumber: w.weekNumber,
     startDate: formatDateBR(w.startDate),
     endDate: formatDateBR(w.endDate),
     transportCompanyId: w.transportCompanyId,
     status: w.status,
   }));
 
-  // Default to the most recent week for users with a company, or the first company's first week.
-  const initialWeekId = hasTransportCompany
-    ? (weekOptions.find((w) => w.transportCompanyId === effectiveCompanyId)
-        ?.id ??
-      weekOptions[0]?.id ??
-      "")
-    : (weekOptions[0]?.id ?? "");
+  const currentIsoWeek = getCurrentIsoWeek();
+  const filteredWeekOptions = weekOptions.filter((w) => {
+    if (w.year > currentIsoWeek.year) return false;
+    if (w.year === currentIsoWeek.year && w.weekNumber >= currentIsoWeek.weekNumber)
+      return false;
+    return true;
+  });
+
+  const previousIsoWeek = getPreviousIsoWeek();
+  const previousWeekId = filteredWeekOptions.find(
+    (w) =>
+      w.year === previousIsoWeek.year &&
+      w.weekNumber === previousIsoWeek.weekNumber,
+  )?.id;
+
+  const initialWeekId = previousWeekId ?? filteredWeekOptions[0]?.id ?? "";
 
   return (
     <PerformanceClient
-      weeks={weekOptions}
+      weeks={filteredWeekOptions}
       initialWeekId={initialWeekId}
       hasTransportCompany={hasTransportCompany}
       companies={companies}

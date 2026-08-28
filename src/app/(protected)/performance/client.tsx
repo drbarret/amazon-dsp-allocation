@@ -33,6 +33,7 @@ import { WeekSelector } from "@/components/week-selector";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
 import { StatusPill } from "@/components/status-pill";
+import { getPreviousIsoWeek } from "@/lib/week-utils";
 import {
   importPerformanceCsv,
   listPerformanceSnapshots,
@@ -45,6 +46,8 @@ import type { UserRole, ScorecardClassification } from "@/generated/prisma";
 interface WeekOption {
   id: string;
   weekKey: string;
+  year: number;
+  weekNumber: number;
   startDate: string;
   endDate: string;
   transportCompanyId: string;
@@ -99,7 +102,11 @@ export function PerformanceClient({
   const canSelectCompany =
     !hasTransportCompany && MANAGEMENT_ROLES.includes(userRole);
   const [selectedCompanyId, setSelectedCompanyIdState] = useState<string | "">(
-    canSelectCompany ? (companies[0]?.id ?? "") : "",
+    () => {
+      if (!canSelectCompany) return "";
+      const initialWeek = weeks.find((w) => w.id === initialWeekId);
+      return initialWeek?.transportCompanyId ?? companies[0]?.id ?? "";
+    },
   );
 
   const filteredWeeks = useMemo(() => {
@@ -107,22 +114,20 @@ export function PerformanceClient({
     return weeks.filter((w) => w.transportCompanyId === selectedCompanyId);
   }, [weeks, canSelectCompany, selectedCompanyId]);
 
-  const [selectedWeekId, setSelectedWeekId] = useState<string>(() => {
-    if (canSelectCompany) {
-      const companyWeeks = companies[0]?.id
-        ? weeks.filter((w) => w.transportCompanyId === companies[0].id)
-        : weeks;
-      return companyWeeks[0]?.id ?? "";
-    }
-    return initialWeekId;
-  });
+  const [selectedWeekId, setSelectedWeekId] = useState<string>(initialWeekId);
 
   const setSelectedCompanyId = (companyId: string) => {
     setSelectedCompanyIdState(companyId);
     const companyWeeks = companyId
       ? weeks.filter((w) => w.transportCompanyId === companyId)
       : weeks;
-    setSelectedWeekId(companyWeeks[0]?.id ?? "");
+    const previousIsoWeek = getPreviousIsoWeek();
+    const previousWeek = companyWeeks.find(
+      (w) =>
+        w.year === previousIsoWeek.year &&
+        w.weekNumber === previousIsoWeek.weekNumber,
+    );
+    setSelectedWeekId(previousWeek?.id ?? companyWeeks[0]?.id ?? "");
   };
 
   const effectiveTransportCompanyId = useMemo(() => {
@@ -340,8 +345,8 @@ export function PerformanceClient({
         )}
         <EmptyState
           icon={CalendarOffIcon}
-          title="Nenhuma semana cadastrada"
-          hint="Ainda não existe nenhuma semana cadastrada para a transportadora selecionada."
+          title="Nenhuma semana anterior disponível"
+          hint="Aguarde a criação automática da próxima semana."
         />
       </div>
     );

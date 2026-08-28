@@ -23,20 +23,40 @@ vi.mock("../actions", () => ({
     mockClearPerformanceWeek(...args),
 }));
 
+vi.mock("@/lib/week-utils", () => ({
+  getCurrentIsoWeek: () => ({ year: 2026, weekNumber: 35 }),
+  getPreviousIsoWeek: () => ({ year: 2026, weekNumber: 34 }),
+}));
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
 });
 
-const baseWeeks = [
-  {
-    id: "week-1",
-    weekKey: "WK-33",
+function buildWeek(
+  id: string,
+  weekKey: string,
+  year: number,
+  weekNumber: number,
+  transportCompanyId = "tc-1",
+  status = "PLANNING",
+) {
+  return {
+    id,
+    weekKey,
+    year,
+    weekNumber,
     startDate: "16/08",
     endDate: "22/08",
-    transportCompanyId: "tc-1",
-    status: "PLANNING",
-  },
+    transportCompanyId,
+    status,
+  };
+}
+
+const baseWeeks = [
+  buildWeek("week-33", "WK-33", 2026, 33),
+  buildWeek("week-34", "WK-34", 2026, 34),
+  buildWeek("week-35", "WK-35", 2026, 35),
 ];
 
 describe("PerformanceClient", () => {
@@ -45,8 +65,8 @@ describe("PerformanceClient", () => {
 
     render(
       <PerformanceClient
-        weeks={baseWeeks}
-        initialWeekId="week-1"
+        weeks={baseWeeks.filter((w) => w.weekNumber < 35)}
+        initialWeekId="week-34"
         hasTransportCompany={true}
         companies={[]}
         userRole="SUPERVISOR"
@@ -81,8 +101,8 @@ describe("PerformanceClient", () => {
 
     render(
       <PerformanceClient
-        weeks={baseWeeks}
-        initialWeekId="week-1"
+        weeks={baseWeeks.filter((w) => w.weekNumber < 35)}
+        initialWeekId="week-34"
         hasTransportCompany={true}
         companies={[]}
         userRole="SUPERVISOR"
@@ -101,8 +121,8 @@ describe("PerformanceClient", () => {
 
     render(
       <PerformanceClient
-        weeks={[{ ...baseWeeks[0], status: "CLOSED" }]}
-        initialWeekId="week-1"
+        weeks={[buildWeek("week-34", "WK-34", 2026, 34, "tc-1", "CLOSED")]}
+        initialWeekId="week-34"
         hasTransportCompany={true}
         companies={[]}
         userRole="SUPERVISOR"
@@ -120,7 +140,7 @@ describe("PerformanceClient", () => {
     mockListPerformanceSnapshots.mockResolvedValue({ success: true, rows: [] });
     mockImportPerformanceCsv.mockResolvedValue({
       success: true,
-      weekKey: "WK-33",
+      weekKey: "WK-34",
       imported: 1,
       skipped: 0,
       errors: [],
@@ -128,8 +148,8 @@ describe("PerformanceClient", () => {
 
     render(
       <PerformanceClient
-        weeks={baseWeeks}
-        initialWeekId="week-1"
+        weeks={baseWeeks.filter((w) => w.weekNumber < 35)}
+        initialWeekId="week-34"
         hasTransportCompany={true}
         companies={[]}
         userRole="SUPERVISOR"
@@ -155,5 +175,116 @@ describe("PerformanceClient", () => {
     await waitFor(() => {
       expect(mockImportPerformanceCsv).toHaveBeenCalled();
     });
+  });
+
+  it("selects the previous ISO week by default", () => {
+    mockListPerformanceSnapshots.mockResolvedValue({ success: true, rows: [] });
+
+    render(
+      <PerformanceClient
+        weeks={baseWeeks.filter((w) => w.weekNumber < 35)}
+        initialWeekId="week-34"
+        hasTransportCompany={true}
+        companies={[]}
+        userRole="SUPERVISOR"
+      />,
+    );
+
+    const weekSelect = screen.getByLabelText("Semana") as HTMLSelectElement;
+    expect(weekSelect.value).toBe("week-34");
+  });
+
+  it("does not render current or future weeks in the selector", () => {
+    mockListPerformanceSnapshots.mockResolvedValue({ success: true, rows: [] });
+
+    render(
+      <PerformanceClient
+        weeks={baseWeeks.filter((w) => w.weekNumber < 35)}
+        initialWeekId="week-34"
+        hasTransportCompany={true}
+        companies={[]}
+        userRole="SUPERVISOR"
+      />,
+    );
+
+    const options = screen.getAllByRole("option").map((o) => o.textContent);
+    expect(options.some((text) => text?.includes("WK-35"))).toBe(false);
+    expect(options.some((text) => text?.includes("WK-36"))).toBe(false);
+  });
+
+  it("keeps historical weeks available in the selector", () => {
+    mockListPerformanceSnapshots.mockResolvedValue({ success: true, rows: [] });
+
+    render(
+      <PerformanceClient
+        weeks={baseWeeks.filter((w) => w.weekNumber < 35)}
+        initialWeekId="week-34"
+        hasTransportCompany={true}
+        companies={[]}
+        userRole="SUPERVISOR"
+      />,
+    );
+
+    const options = screen.getAllByRole("option").map((o) => o.textContent);
+    expect(options.some((text) => text?.includes("WK-34"))).toBe(true);
+    expect(options.some((text) => text?.includes("WK-33"))).toBe(true);
+  });
+
+  it("recalculates selected week to the previous week when changing company", async () => {
+    mockListPerformanceSnapshots.mockResolvedValue({ success: true, rows: [] });
+
+    const companies = [
+      { id: "tc-a", name: "Transportadora A" },
+      { id: "tc-b", name: "Transportadora B" },
+    ];
+    const weeks = [
+      buildWeek("wa-33", "WK-33", 2026, 33, "tc-a"),
+      buildWeek("wa-34", "WK-34", 2026, 34, "tc-a"),
+      buildWeek("wb-33", "WK-33", 2026, 33, "tc-b"),
+      buildWeek("wb-34", "WK-34", 2026, 34, "tc-b"),
+    ];
+
+    render(
+      <PerformanceClient
+        weeks={weeks}
+        initialWeekId="wa-34"
+        hasTransportCompany={false}
+        companies={companies}
+        userRole="ADMIN"
+      />,
+    );
+
+    const weekSelect = screen.getByLabelText("Semana") as HTMLSelectElement;
+    expect(weekSelect.value).toBe("wa-34");
+
+    const companySelect = screen.getByLabelText(
+      "Transportadora",
+    ) as HTMLSelectElement;
+    fireEvent.change(companySelect, { target: { value: "tc-b" } });
+
+    await waitFor(() => {
+      expect(weekSelect.value).toBe("wb-34");
+    });
+  });
+
+  it("shows empty state when no past weeks are available", () => {
+    mockListPerformanceSnapshots.mockResolvedValue({ success: true, rows: [] });
+
+    render(
+      <PerformanceClient
+        weeks={[]}
+        initialWeekId=""
+        hasTransportCompany={true}
+        companies={[]}
+        userRole="SUPERVISOR"
+      />,
+    );
+
+    expect(
+      screen.getByText("Nenhuma semana anterior disponível"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Aguarde a criação automática da próxima semana."),
+    ).toBeInTheDocument();
   });
 });
