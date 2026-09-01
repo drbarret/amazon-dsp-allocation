@@ -4,8 +4,8 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/lib/audit";
 import { roleIsAtLeast } from "@/lib/authz";
-import { encrypt } from "@/lib/crypto";
-import { validateCityPreferences } from "@/lib/onboarding";
+import { encrypt, computeCpfBlindIndex } from "@/lib/crypto";
+import { validateCityPreferences, validateCpf, validatePhone } from "@/lib/onboarding";
 import { cancelPendingDeactivationRequests } from "@/lib/deactivation";
 import { revalidatePath } from "next/cache";
 import type { UserRole, VehicleType } from "@/generated/prisma";
@@ -62,6 +62,171 @@ function checkCrossCompany(
 
 const VALID_VEHICLE_TYPES: VehicleType[] = ["CARGO_VAN", "LARGE_VAN", "PASSEIO"];
 
+export interface CreateDriverInput {
+  name: string;
+  email: string;
+  cpf: string;
+  phone: string;
+  vehicleType: VehicleType;
+  transporterId?: string;
+  worksCiclo1?: boolean;
+  worksCiclo2?: boolean;
+  whatsappGroup?: string;
+  cities?: string[];
+}
+
+// ---------------------------------------------------------------------------
+// createDriver — manual registration by supervisor/account manager/admin
+// ---------------------------------------------------------------------------
+
+export async function createDriver(
+  input: CreateDriverInput,
+): Promise<{ success: boolean; driverId?: string; error?: string }> {
+  const session = await requireSupervisorOrAbove();
+  const actorId = session.user.id;
+  const actorRole = session.user.role as UserRole;
+
+  // Resolve transport company for write isolation
+  const access = await resolveTransportCompanyId(actorId, actorRole);
+  if (!access.ok) {
+    return { success: false, error: access.error };
+  }
+
+  // --- Validations ---
+
+  const name = input.name?.trim() ?? "";
+  if (!name || name.length > 200) {
+    return { success: false, error: "Nome deve ter entre 1 e 200 caracteres." };
+  }
+
+  const email = input.email?.toLowerCase().trim() ?? "";
+  if (!email.includes("@")) {
+    return { success: false, error: "E-mail inválido." };
+  }
+
+  const existingUser = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true },
+  });
+  if (existingUser) {
+    return { success: false, error: "Este e-mail já está cadastrado." };
+  }
+
+  const cpfResult = validateCpf(input.cpf ?? "");
+  if (!cpfResult.valid) {
+    return { success: false, error: "CPF inválido. Verifique os dígitos e tente novamente." };
+  }
+  const cpfBlindIndex = computeCpfBlindIndex(cpfResult.normalized);
+  const existingCpf = await prisma.driverProfile.findUnique({
+    where: { cpfBlindIndex },
+    select: { userId: true },
+  });
+  if (existingCpf) {
+    return { success: false, error: "Este CPF já está cadastrado para outro motorista." };
+  }
+
+  const phoneResult = validatePhone(input.phone ?? "");
+  if (!phoneResult.valid) {
+    return { success: false, error: "Telefone inválido. Use o formato (XX) XXXXX-XXXX." };
+  }
+
+  if (!(VALID_VEHICLE_TYPES as string[]).includes(input.vehicleType)) {
+    return { success: false, error: "Tipo de veículo inválido." };
+  }
+
+  const cities = input.cities ?? [];
+  const cityValidation = validateCityPreferences(cities);
+  if (!cityValidation.valid) {
+    return { success: false, error: cityValidation.error! };
+  }
+
+  const transporterId = input.transporterId?.trim() || null;
+  const whatsappGroup = input.whatsappGroup?.trim() || null;
+  if (whatsappGroup && whatsappGroup.length > 80) {
+    return { success: false, error: "Grupo de WhatsApp deve ter no máximo 80 caracteres." };
+  }
+
+  // --- Create user, profile and preferences atomically ---
+
+  let driverId: string;
+
+  try {
+    const created = await prisma.$transaction(async (tx) => {
+      // Upsert AllowedEmail so the driver can sign in via magic link / OAuth
+      const allowed = await tx.allowedEmail.findUnique({ where: { email } });
+      if (allowed) {
+        if (allowed.status === "REVOKED") {
+          throw new Error("Este e-mail possui um convite revogado. Reative o convite antes de cadastrar.");
+        }
+        if (allowed.status === "BLOCKED") {
+          await tx.allowedEmail.update({
+            where: { email },
+            data: { status: "ACTIVE", role: "DRIVER" },
+          });
+        }
+      } else {
+        await tx.allowedEmail.create({
+          data: { email, role: "DRIVER", status: "ACTIVE", invitedById: actorId },
+        });
+      }
+
+      const user = await tx.user.create({
+        data: {
+          email,
+          name,
+          role: "DRIVER",
+          transportCompanyId: access.id,
+          active: true,
+          emailVerified: new Date(),
+          driverProfile: {
+            create: {
+              cpf: encrypt(cpfResult.normalized),
+              cpfBlindIndex,
+              phone: encrypt(phoneResult.normalized),
+              phoneFormatted: input.phone.trim(),
+              vehicleType: input.vehicleType,
+              transporterId,
+              onboardingCompleted: true,
+              worksCiclo1: input.worksCiclo1 ?? false,
+              worksCiclo2: input.worksCiclo2 ?? false,
+              whatsappGroup,
+              regionPreferences: {
+                create: cities.map((city, index) => ({
+                  city,
+                  priority: index + 1,
+                })),
+              },
+            },
+          },
+        },
+        include: { driverProfile: true },
+      });
+
+      return user;
+    });
+
+    driverId = created.id;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { success: false, error: `Erro ao cadastrar: ${message}` };
+  }
+
+  // Audit log (outside transaction — non-critical). Never store CPF/plain phone.
+  await writeAuditLog({
+    eventType: "DRIVER_CREATED",
+    actorId,
+    targetUserId: driverId,
+    metadata: {
+      transportCompanyId: access.id,
+      vehicleType: input.vehicleType,
+      cityCount: cities.length,
+    },
+  });
+
+  revalidatePath("/drivers");
+  return { success: true, driverId };
+}
+
 // ---------------------------------------------------------------------------
 // saveDriverEdits — single transactional action for the edit modal
 // ---------------------------------------------------------------------------
@@ -75,6 +240,7 @@ export interface SaveDriverEditsInput {
   isTrusted?: boolean;
   whatsappGroup?: string;
   phone?: string;
+  cpf?: string;
   cities?: string[];
 }
 
@@ -115,6 +281,7 @@ export async function saveDriverEdits(
           isTrusted: true,
           whatsappGroup: true,
           phoneFormatted: true,
+          cpfBlindIndex: true,
           regionPreferences: {
             select: { city: true, priority: true },
             orderBy: { priority: "asc" },
@@ -161,6 +328,26 @@ export async function saveDriverEdits(
     }
   }
 
+  let cpfUpdate: { encrypted: string; blindIndex: string } | undefined;
+  if (data.cpf !== undefined) {
+    const trimmedCpf = data.cpf.trim();
+    if (trimmedCpf) {
+      const cpfResult = validateCpf(trimmedCpf);
+      if (!cpfResult.valid) {
+        return { success: false, error: "CPF inválido. Verifique os dígitos e tente novamente." };
+      }
+      const blindIndex = computeCpfBlindIndex(cpfResult.normalized);
+      const existing = await prisma.driverProfile.findUnique({
+        where: { cpfBlindIndex: blindIndex },
+        select: { userId: true },
+      });
+      if (existing && existing.userId !== targetUserId) {
+        return { success: false, error: "Este CPF já está cadastrado para outro motorista." };
+      }
+      cpfUpdate = { encrypted: encrypt(cpfResult.normalized), blindIndex };
+    }
+  }
+
   // --- Build old/new values for audit ---
   const profile = target.driverProfile;
   const oldValue: Record<string, string | boolean | null | string[]> = {};
@@ -197,6 +384,10 @@ export async function saveDriverEdits(
   if (data.phone !== undefined) {
     oldValue.phone = "(oculto)";
     newValue.phone = "(atualizado)";
+  }
+  if (cpfUpdate) {
+    oldValue.cpf = "(oculto)";
+    newValue.cpf = "(atualizado)";
   }
   if (data.cities !== undefined) {
     oldValue.cities = profile.regionPreferences.filter((p) => p.city).map((p) => p.city as string);
@@ -237,6 +428,12 @@ export async function saveDriverEdits(
           profileUpdate.phone = null;
           profileUpdate.phoneFormatted = null;
         }
+      }
+
+      // CPF encryption
+      if (cpfUpdate) {
+        profileUpdate.cpf = cpfUpdate.encrypted;
+        profileUpdate.cpfBlindIndex = cpfUpdate.blindIndex;
       }
 
       if (Object.keys(profileUpdate).length > 0) {

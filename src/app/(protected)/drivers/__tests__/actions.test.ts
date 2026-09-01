@@ -2,11 +2,13 @@ import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { SKIP_INTEGRATION, requireDatabase } from "@/lib/test-db-gate";
 import {
+  createDriver,
   saveDriverEdits,
   requestDriverDeactivation,
   reviewDeactivationRequest,
 } from "../actions";
 import { cancelPendingDeactivationRequests } from "@/lib/deactivation";
+import { computeCpfBlindIndex } from "@/lib/crypto";
 
 // ---------------------------------------------------------------------------
 // Integration tests for driver edit and deactivation request actions.
@@ -34,6 +36,34 @@ vi.mock("@/lib/auth", () => ({
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
 }));
+
+function generateValidCpf(): string {
+  const base = Array.from({ length: 9 }, () => Math.floor(Math.random() * 10));
+
+  let sum = 0;
+  for (let i = 0; i < 9; i++) {
+    sum += base[i] * (10 - i);
+  }
+  let d1 = (sum * 10) % 11;
+  if (d1 === 10) d1 = 0;
+  base.push(d1);
+
+  sum = 0;
+  for (let i = 0; i < 10; i++) {
+    sum += base[i] * (11 - i);
+  }
+  let d2 = (sum * 10) % 11;
+  if (d2 === 10) d2 = 0;
+  base.push(d2);
+
+  const digits = base.join("");
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9, 11)}`;
+}
+
+const cpfA = generateValidCpf();
+const cpfB = generateValidCpf();
+const cpfC = generateValidCpf();
+const cpfD = generateValidCpf();
 
 describe.skipIf(SKIP_INTEGRATION)("driver edit and deactivation request actions", () => {
   const runId = Date.now();
@@ -302,6 +332,183 @@ describe.skipIf(SKIP_INTEGRATION)("driver edit and deactivation request actions"
     expect(profile?.phone).toBeTruthy();
     expect(profile?.phone).not.toBe("(11) 98765-4321"); // must be encrypted
     expect(profile?.phone).toContain(":"); // iv:authTag:ciphertext format
+  });
+
+  it("rejects invalid CPF", async () => {
+    if (!dbReady) return;
+    mockAuth.mockResolvedValue(session("SUPERVISOR", supervisorId));
+
+    const result = await saveDriverEdits(driverUserId, {
+      cpf: "111.111.111-11",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("CPF inválido");
+  });
+
+  it("encrypts CPF and updates blind index", async () => {
+    if (!dbReady) return;
+    mockAuth.mockResolvedValue(session("SUPERVISOR", supervisorId));
+
+    const result = await saveDriverEdits(driverUserId, {
+      cpf: cpfA,
+    });
+
+    expect(result.success).toBe(true);
+
+    const profile = await prisma.driverProfile.findUnique({
+      where: { id: driverProfileId },
+    });
+
+    expect(profile?.cpf).toBeTruthy();
+    expect(profile?.cpf).not.toBe(cpfA); // must be encrypted
+    expect(profile?.cpf).toContain(":"); // iv:authTag:ciphertext format
+    expect(profile?.cpfBlindIndex).toBeTruthy();
+  });
+
+  it("rejects duplicate CPF from another driver", async () => {
+    if (!dbReady) return;
+    mockAuth.mockResolvedValue(session("SUPERVISOR", supervisorId));
+
+    const duplicateCpf = cpfB;
+    const blindIndex = computeCpfBlindIndex(duplicateCpf);
+
+    // Create a second driver whose cpfBlindIndex collides with the CPF we will submit
+    const otherDriver = await prisma.user.create({
+      data: {
+        email: `__test_other_cpf_${runId}@test.local`,
+        name: "Other Driver CPF",
+        role: "DRIVER",
+        transportCompanyId,
+        driverProfile: {
+          create: {
+            vehicleType: "CARGO_VAN",
+            cpf: "encrypted-cpf",
+            cpfBlindIndex: blindIndex,
+          },
+        },
+      },
+      include: { driverProfile: true },
+    });
+
+    const result = await saveDriverEdits(driverUserId, { cpf: duplicateCpf });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("já está cadastrado");
+
+    // Cleanup
+    await prisma.driverProfile.deleteMany({
+      where: { id: otherDriver.driverProfile!.id },
+    });
+    await prisma.user.delete({ where: { id: otherDriver.id } });
+  });
+
+  // ---- createDriver ----
+
+  it("rejects DRIVER role from creating a driver", async () => {
+    if (!dbReady) return;
+    mockAuth.mockResolvedValue(session("DRIVER", driverUserId));
+
+    await expect(
+      createDriver({
+        name: "Hacked Driver",
+        email: "hacked@test.local",
+        cpf: cpfC,
+        phone: "(11) 99999-9999",
+        vehicleType: "CARGO_VAN",
+        cities: ["Jundiaí"],
+      }),
+    ).rejects.toThrow("Permissão insuficiente");
+  });
+
+  it("creates a driver manually with all fields", async () => {
+    if (!dbReady) return;
+    mockAuth.mockResolvedValue(session("SUPERVISOR", supervisorId));
+
+    const email = `__test_create_driver_${runId}@test.local`;
+    const result = await createDriver({
+      name: "Novo Motorista",
+      email,
+      cpf: cpfC,
+      phone: "(11) 99999-8888",
+      vehicleType: "LARGE_VAN",
+      transporterId: "T-CREATE",
+      worksCiclo1: true,
+      worksCiclo2: false,
+      whatsappGroup: "Grupo Novo",
+      cities: ["Jundiaí", "Louveira"],
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.driverId).toBeTruthy();
+
+    const created = await prisma.user.findUnique({
+      where: { id: result.driverId },
+      include: { driverProfile: { include: { regionPreferences: { orderBy: { priority: "asc" } } } } },
+    });
+
+    expect(created?.email).toBe(email);
+    expect(created?.name).toBe("Novo Motorista");
+    expect(created?.role).toBe("DRIVER");
+    expect(created?.active).toBe(true);
+    expect(created?.transportCompanyId).toBe(transportCompanyId);
+    expect(created?.driverProfile?.vehicleType).toBe("LARGE_VAN");
+    expect(created?.driverProfile?.transporterId).toBe("T-CREATE");
+    expect(created?.driverProfile?.worksCiclo1).toBe(true);
+    expect(created?.driverProfile?.whatsappGroup).toBe("Grupo Novo");
+    expect(created?.driverProfile?.phoneFormatted).toBe("(11) 99999-8888");
+    expect(created?.driverProfile?.cpf).toBeTruthy();
+    expect(created?.driverProfile?.cpf).not.toBe(cpfC);
+    expect(created?.driverProfile?.cpfBlindIndex).toBeTruthy();
+    expect(created?.driverProfile?.regionPreferences).toHaveLength(2);
+    expect(created?.driverProfile?.regionPreferences[0].city).toBe("Jundiaí");
+
+    // AllowedEmail entry created so the driver can sign in
+    const allowed = await prisma.allowedEmail.findUnique({ where: { email } });
+    expect(allowed?.status).toBe("ACTIVE");
+    expect(allowed?.role).toBe("DRIVER");
+
+    // Cleanup
+    await prisma.regionCityPreference.deleteMany({
+      where: { driverProfileId: created?.driverProfile?.id },
+    });
+    await prisma.driverProfile.deleteMany({ where: { id: created?.driverProfile?.id } });
+    await prisma.user.delete({ where: { id: result.driverId } });
+    await prisma.allowedEmail.deleteMany({ where: { email } });
+  });
+
+  it("rejects duplicate email on create", async () => {
+    if (!dbReady) return;
+    mockAuth.mockResolvedValue(session("SUPERVISOR", supervisorId));
+
+    const result = await createDriver({
+      name: "Duplicate Email",
+      email: `__test_drv_edit_${runId}@test.local`, // existing driver email
+      cpf: cpfD, // different valid CPF
+      phone: "(11) 99999-9999",
+      vehicleType: "CARGO_VAN",
+      cities: ["Jundiaí"],
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("e-mail");
+  });
+
+  it("rejects invalid CPF on create", async () => {
+    if (!dbReady) return;
+    mockAuth.mockResolvedValue(session("SUPERVISOR", supervisorId));
+
+    const result = await createDriver({
+      name: "Invalid CPF",
+      email: `__test_invalid_cpf_${runId}@test.local`,
+      cpf: "111.111.111-11",
+      phone: "(11) 99999-9999",
+      vehicleType: "CARGO_VAN",
+      cities: ["Jundiaí"],
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("CPF inválido");
   });
 
   // ---- requestDriverDeactivation ----

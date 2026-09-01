@@ -8,6 +8,7 @@ vi.mock("@/lib/driver-actions", () => ({
 }));
 
 vi.mock("../actions", () => ({
+  createDriver: vi.fn().mockResolvedValue({ success: true, driverId: "new-driver-id" }),
   saveDriverEdits: vi.fn().mockResolvedValue({ success: true }),
   requestDriverDeactivation: vi.fn().mockResolvedValue({ success: true }),
   reviewDeactivationRequest: vi.fn().mockResolvedValue({ success: true }),
@@ -24,6 +25,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { DriversClient } from "../client";
+import { createDriver, saveDriverEdits } from "../actions";
 import type { DriverRow } from "../page";
 import type { UserRole } from "@/generated/prisma";
 
@@ -138,5 +140,47 @@ describe("DriversClient — render", () => {
   it("mostra badge de pendência quando há solicitações", () => {
     render(<DriversClient {...defaultProps} pendingDeactivationCount={2} />);
     expect(screen.getByText(/2 solicitação/)).toBeInTheDocument();
+  });
+});
+
+describe("DriversClient — create driver", () => {
+  it("mostra botão Cadastrar motorista para SUPERVISOR", () => {
+    render(<DriversClient {...defaultProps} />);
+    expect(screen.getByRole("button", { name: /Cadastrar motorista/i })).toBeInTheDocument();
+  });
+
+  it("abre modal de cadastro ao clicar no botão", () => {
+    render(<DriversClient {...defaultProps} />);
+    fireEvent.click(screen.getByRole("button", { name: /Cadastrar motorista/i }));
+    expect(screen.getByRole("heading", { name: /Cadastrar Motorista/i })).toBeInTheDocument();
+  });
+
+  it("não mostra botão de cadastrar para DRIVER", () => {
+    render(<DriversClient {...defaultProps} currentActorRole="DRIVER" />);
+    expect(screen.queryByRole("button", { name: /Cadastrar motorista/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("DriversClient — edit driver", () => {
+  it("abre modal de edição com campo de CPF", () => {
+    render(<DriversClient {...defaultProps} />);
+    fireEvent.click(screen.getAllByLabelText(/Editar Rafael Almeida/i)[0]);
+    expect(screen.getByRole("heading", { name: /Editar Motorista/i })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/000\.000\.000-00/i)).toBeInTheDocument();
+  });
+
+  it("envia CPF ao salvar edição quando preenchido", async () => {
+    render(<DriversClient {...defaultProps} />);
+    fireEvent.click(screen.getAllByLabelText(/Editar Rafael Almeida/i)[0]);
+
+    const cpfInput = screen.getByPlaceholderText(/000\.000\.000-00/i);
+    fireEvent.change(cpfInput, { target: { value: "123.456.789-09" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /Salvar/i }));
+
+    expect(saveDriverEdits).toHaveBeenCalledWith(
+      "u1",
+      expect.objectContaining({ cpf: "123.456.789-09" }),
+    );
   });
 });

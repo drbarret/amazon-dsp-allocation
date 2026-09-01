@@ -6,18 +6,27 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { SearchIcon, UsersIcon, PencilIcon, StarIcon } from "lucide-react";
+import { SearchIcon, UsersIcon, PencilIcon, StarIcon, PlusIcon } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { StatusPill } from "@/components/status-pill";
 import {
+  Dialog,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
+import {
+  createDriver,
   saveDriverEdits,
   requestDriverDeactivation,
 } from "./actions";
 import { reactivateUser } from "@/app/(protected)/admin/users/actions";
 import { setDriverGnvMarking } from "@/lib/driver-actions";
 import type { DriverRow } from "./page";
-import type { UserRole } from "@/generated/prisma";
+import type { UserRole, VehicleType } from "@/generated/prisma";
 
 const VEHICLE_LABELS: Record<string, string> = {
   CARGO_VAN: "Cargo Van",
@@ -43,6 +52,38 @@ interface Props {
   currentActorRole: UserRole;
 }
 
+interface CreateForm {
+  name: string;
+  email: string;
+  cpf: string;
+  phone: string;
+  vehicleType: VehicleType;
+  transporterId: string;
+  worksCiclo1: boolean;
+  worksCiclo2: boolean;
+  whatsappGroup: string;
+  cities: string[];
+}
+
+const emptyCreateForm: CreateForm = {
+  name: "",
+  email: "",
+  cpf: "",
+  phone: "",
+  vehicleType: "CARGO_VAN",
+  transporterId: "",
+  worksCiclo1: false,
+  worksCiclo2: false,
+  whatsappGroup: "",
+  cities: [],
+};
+
+const VEHICLE_OPTIONS: { value: VehicleType; label: string }[] = [
+  { value: "CARGO_VAN", label: "Cargo Van" },
+  { value: "LARGE_VAN", label: "Large Van" },
+  { value: "PASSEIO", label: "Veículo de Passeio" },
+];
+
 export function DriversClient({
   drivers,
   pendingDeactivationCount,
@@ -55,6 +96,11 @@ export function DriversClient({
   const [isPending, startTransition] = useTransition();
   const statusFilter = searchParams.get("status") ?? initialStatusFilter;
 
+  // Create modal state
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState<CreateForm>(emptyCreateForm);
+  const [creating, setCreating] = useState(false);
+
   // Edit modal state
   const [editingDriver, setEditingDriver] = useState<DriverRow | null>(null);
   const [editForm, setEditForm] = useState<Record<string, unknown>>({});
@@ -64,6 +110,11 @@ export function DriversClient({
   const [deactivatingDriver, setDeactivatingDriver] = useState<DriverRow | null>(null);
   const [deactivationReason, setDeactivationReason] = useState("");
   const [deactivating, setDeactivating] = useState(false);
+
+  const canManageDrivers =
+    currentActorRole === "SUPERVISOR" ||
+    currentActorRole === "ACCOUNT_MANAGER" ||
+    currentActorRole === "ADMIN";
 
   function handleStatusChange(newStatus: string) {
     const params = new URLSearchParams(window.location.search);
@@ -80,6 +131,62 @@ export function DriversClient({
     );
   });
 
+  // ---- Create driver ----
+
+  function openCreateModal() {
+    setCreateForm(emptyCreateForm);
+    setCreateOpen(true);
+  }
+
+  function closeCreateModal() {
+    setCreateOpen(false);
+    setCreateForm(emptyCreateForm);
+  }
+
+  function toggleCreateCity(city: string) {
+    setCreateForm((prev) => {
+      const selected = prev.cities;
+      const isSelected = selected.includes(city);
+      const next = isSelected
+        ? selected.filter((c) => c !== city)
+        : selected.length < 3
+          ? [...selected, city]
+          : selected;
+      return { ...prev, cities: next };
+    });
+  }
+
+  async function handleCreate() {
+    setCreating(true);
+    try {
+      const result = await createDriver({
+        name: createForm.name,
+        email: createForm.email,
+        cpf: createForm.cpf,
+        phone: createForm.phone,
+        vehicleType: createForm.vehicleType,
+        transporterId: createForm.transporterId || undefined,
+        worksCiclo1: createForm.worksCiclo1,
+        worksCiclo2: createForm.worksCiclo2,
+        whatsappGroup: createForm.whatsappGroup || undefined,
+        cities: createForm.cities,
+      });
+      if (result.success) {
+        toast.success("Motorista cadastrado com sucesso.");
+        closeCreateModal();
+        router.refresh();
+      } else {
+        toast.error(result.error ?? "Erro ao cadastrar.");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao cadastrar.");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  // ---- Edit driver ----
+
   function openEditModal(driver: DriverRow) {
     setEditingDriver(driver);
     setEditForm({
@@ -91,6 +198,7 @@ export function DriversClient({
       isTrusted: driver.isTrusted,
       whatsappGroup: driver.whatsappGroup ?? "",
       phone: driver.phoneFormatted ?? "",
+      cpf: "",
       cities: [...driver.cities],
     });
   }
@@ -98,6 +206,19 @@ export function DriversClient({
   function closeEditModal() {
     setEditingDriver(null);
     setEditForm({});
+  }
+
+  function toggleEditCity(city: string) {
+    setEditForm((prev) => {
+      const selected = (prev.cities as string[]) ?? [];
+      const isSelected = selected.includes(city);
+      const next = isSelected
+        ? selected.filter((c) => c !== city)
+        : selected.length < 3
+          ? [...selected, city]
+          : selected;
+      return { ...prev, cities: next };
+    });
   }
 
   async function handleSave() {
@@ -113,6 +234,7 @@ export function DriversClient({
         isTrusted: editForm.isTrusted as boolean,
         whatsappGroup: (editForm.whatsappGroup as string) || undefined,
         phone: (editForm.phone as string) || undefined,
+        cpf: (editForm.cpf as string) || undefined,
         cities: editForm.cities as string[],
       });
       if (result.success) {
@@ -146,6 +268,8 @@ export function DriversClient({
       }
     });
   }
+
+  // ---- Deactivation ----
 
   function openDeactivationModal(driver: DriverRow) {
     setDeactivatingDriver(driver);
@@ -336,10 +460,18 @@ export function DriversClient({
 
   return (
     <div className="space-y-6 p-4 sm:p-6">
-      <PageHeader
-        title="Motoristas"
-        description="Gerencie cadastros de motoristas. Edição inline disponível para Supervisores, Gerentes de Conta e Admins."
-      />
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <PageHeader
+          title="Motoristas"
+          description="Gerencie cadastros de motoristas. Edição e cadastro manual disponíveis para Supervisores, Gerentes de Conta e Admins."
+        />
+        {canManageDrivers && (
+          <Button onClick={openCreateModal} className="shrink-0">
+            <PlusIcon className="mr-1 size-4" />
+            Cadastrar motorista
+          </Button>
+        )}
+      </div>
 
       {/* Pending deactivation badge */}
       {pendingDeactivationCount > 0 && (
@@ -395,7 +527,7 @@ export function DriversClient({
               : "Nenhum motorista cadastrado",
             hint: search
               ? "Limpe a busca ou ajuste os critérios."
-              : "Os motoristas aparecem aqui após concluírem o cadastro.",
+              : "Os motoristas aparecem aqui após concluírem o cadastro ou serem cadastrados manualmente.",
           }}
         />
       </div>
@@ -413,7 +545,7 @@ export function DriversClient({
             <p className="mt-1 text-sm text-muted-foreground">
               {search
                 ? "Limpe a busca ou ajuste os critérios."
-                : "Os motoristas aparecem aqui após concluírem o cadastro."}
+                : "Os motoristas aparecem aqui após concluírem o cadastro ou serem cadastrados manualmente."}
             </p>
           </div>
         ) : (
@@ -495,141 +627,333 @@ export function DriversClient({
         {search ? " (filtrado)" : ""}
       </p>
 
-      {/* Edit Modal */}
-      {editingDriver && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-lg space-y-4 rounded-lg bg-background p-6 shadow-xl">
-            <h2 className="text-lg font-semibold">Editar Motorista</h2>
+      {/* Create Modal */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogHeader>
+          <DialogTitle>Cadastrar Motorista</DialogTitle>
+          <DialogDescription>
+            Preencha os dados do novo motorista. O acesso ao sistema é feito por magic link — nenhuma senha inicial é necessária.
+          </DialogDescription>
+        </DialogHeader>
 
-            <div className="space-y-3">
-              <label className="block text-sm font-medium">Nome</label>
+        <DialogClose onClose={closeCreateModal} />
+
+        <div className="mt-4 max-h-[70vh] space-y-5 overflow-y-auto pr-1">
+          {/* Dados pessoais */}
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-foreground">Dados pessoais</h3>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium">Nome completo</label>
               <Input
-                value={(editForm.name as string) ?? ""}
-                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                value={createForm.name}
+                onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
                 maxLength={200}
+                placeholder="Nome do motorista"
               />
-
-              <label className="block text-sm font-medium">E-mail (somente leitura)</label>
-              <Input value={editingDriver.email} disabled />
-
-              <label className="block text-sm font-medium">Telefone</label>
+            </div>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium">E-mail</label>
               <Input
-                value={(editForm.phone as string) ?? ""}
-                onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                placeholder="(11) 99999-9999"
+                type="email"
+                value={createForm.email}
+                onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
+                placeholder="motorista@exemplo.com"
               />
-
-              <label className="block text-sm font-medium">Tipo de Veículo</label>
-              <select
-                className="w-full rounded border px-3 py-2 text-sm"
-                value={(editForm.vehicleType as string) ?? "CARGO_VAN"}
-                onChange={(e) => setEditForm({ ...editForm, vehicleType: e.target.value })}
-              >
-                <option value="CARGO_VAN">Cargo Van</option>
-                <option value="LARGE_VAN">Large Van</option>
-                <option value="PASSEIO">Veículo de Passeio</option>
-              </select>
-
-              <label className="block text-sm font-medium">Transporter ID</label>
-              <Input
-                value={(editForm.transporterId as string) ?? ""}
-                onChange={(e) => setEditForm({ ...editForm, transporterId: e.target.value })}
-              />
-
-              <div className="flex gap-4">
-                <label className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={!!editForm.worksCiclo1}
-                    onCheckedChange={(c) => setEditForm({ ...editForm, worksCiclo1: !!c })}
-                  />
-                  Manhã (Ciclo 1)
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={!!editForm.worksCiclo2}
-                    onCheckedChange={(c) => setEditForm({ ...editForm, worksCiclo2: !!c })}
-                  />
-                  Tarde (Ciclo 2)
-                </label>
-              </div>
-
-              <label className="flex items-center gap-2 text-sm font-medium">
-                <Checkbox
-                  checked={!!editForm.isTrusted}
-                  onCheckedChange={(c) => setEditForm({ ...editForm, isTrusted: !!c })}
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <label className="block text-sm font-medium">CPF</label>
+                <Input
+                  value={createForm.cpf}
+                  onChange={(e) => setCreateForm({ ...createForm, cpf: e.target.value })}
+                  placeholder="000.000.000-00"
                 />
-                Favorito (Confiança)
-              </label>
-
-              <label className="block text-sm font-medium">Grupo WhatsApp</label>
-              <Input
-                value={(editForm.whatsappGroup as string) ?? ""}
-                onChange={(e) => setEditForm({ ...editForm, whatsappGroup: e.target.value })}
-                maxLength={80}
-              />
-
-              <label className="block text-sm font-medium">Cidades (até 3)</label>
-              <div className="flex flex-wrap gap-2">
-                {ALLOWED_CITIES.map((city) => {
-                  const selected = (editForm.cities as string[]) ?? [];
-                  const isSelected = selected.includes(city);
-                  return (
-                    <button
-                      key={city}
-                      type="button"
-                      onClick={() => {
-                        const next = isSelected
-                          ? selected.filter((c) => c !== city)
-                          : selected.length < 3
-                            ? [...selected, city]
-                            : selected;
-                        setEditForm({ ...editForm, cities: next });
-                      }}
-                      className={`rounded-full border px-3 py-1 text-xs ${
-                        isSelected
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "border-border hover:bg-accent"
-                      }`}
-                    >
-                      {city}
-                    </button>
-                  );
-                })}
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium">Telefone</label>
+                <Input
+                  value={createForm.phone}
+                  onChange={(e) => setCreateForm({ ...createForm, phone: e.target.value })}
+                  placeholder="(11) 99999-9999"
+                />
               </div>
             </div>
+          </section>
 
-            <div className="flex justify-end gap-2 pt-2">
+          {/* Veículo e trabalho */}
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-foreground">Veículo e trabalho</h3>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <label className="block text-sm font-medium">Tipo de Veículo</label>
+                <select
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={createForm.vehicleType}
+                  onChange={(e) =>
+                    setCreateForm({ ...createForm, vehicleType: e.target.value as VehicleType })
+                  }
+                >
+                  {VEHICLE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium">Transporter ID</label>
+                <Input
+                  value={createForm.transporterId}
+                  onChange={(e) => setCreateForm({ ...createForm, transporterId: e.target.value })}
+                  placeholder="T-XXXX"
+                />
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-4">
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={createForm.worksCiclo1}
+                  onCheckedChange={(c) => setCreateForm({ ...createForm, worksCiclo1: !!c })}
+                />
+                Manhã (Ciclo 1)
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={createForm.worksCiclo2}
+                  onCheckedChange={(c) => setCreateForm({ ...createForm, worksCiclo2: !!c })}
+                />
+                Tarde (Ciclo 2)
+              </label>
+            </div>
+          </section>
+
+          {/* Contato */}
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-foreground">Contato</h3>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium">Grupo WhatsApp</label>
+              <Input
+                value={createForm.whatsappGroup}
+                onChange={(e) => setCreateForm({ ...createForm, whatsappGroup: e.target.value })}
+                maxLength={80}
+                placeholder="Nome do grupo"
+              />
+            </div>
+          </section>
+
+          {/* Preferências */}
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-foreground">Preferências de região</h3>
+            <p className="text-xs text-muted-foreground">Selecione até 3 cidades de preferência.</p>
+            <div className="flex flex-wrap gap-2">
+              {ALLOWED_CITIES.map((city) => {
+                const isSelected = createForm.cities.includes(city);
+                return (
+                  <button
+                    key={city}
+                    type="button"
+                    onClick={() => toggleCreateCity(city)}
+                    className={`rounded-full border px-3 py-1 text-xs ${
+                      isSelected
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border hover:bg-accent"
+                    }`}
+                  >
+                    {city}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={closeCreateModal} disabled={creating}>
+            Cancelar
+          </Button>
+          <Button onClick={handleCreate} disabled={creating}>
+            {creating ? "Cadastrando..." : "Cadastrar"}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* Edit Modal */}
+      <Dialog open={!!editingDriver} onOpenChange={(open) => !open && closeEditModal()}>
+        {editingDriver && (
+          <>
+            <DialogHeader>
+              <DialogTitle>Editar Motorista</DialogTitle>
+              <DialogDescription>
+                Atualize os dados de {editingDriver.name}. O CPF e telefone são sensíveis e não são exibidos em texto plano.
+              </DialogDescription>
+            </DialogHeader>
+
+            <DialogClose onClose={closeEditModal} />
+
+            <div className="mt-4 max-h-[70vh] space-y-5 overflow-y-auto pr-1">
+              {/* Dados pessoais */}
+              <section className="space-y-3">
+                <h3 className="text-sm font-semibold text-foreground">Dados pessoais</h3>
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium">Nome</label>
+                  <Input
+                    value={(editForm.name as string) ?? ""}
+                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                    maxLength={200}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium">E-mail</label>
+                  <Input value={editingDriver.email} disabled />
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium">
+                      CPF <span className="font-normal text-muted-foreground">(deixe em branco para manter o atual)</span>
+                    </label>
+                    <Input
+                      value={(editForm.cpf as string) ?? ""}
+                      onChange={(e) => setEditForm({ ...editForm, cpf: e.target.value })}
+                      placeholder="000.000.000-00"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium">Telefone</label>
+                    <Input
+                      value={(editForm.phone as string) ?? ""}
+                      onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                      placeholder="(11) 99999-9999"
+                    />
+                  </div>
+                </div>
+              </section>
+
+              {/* Veículo e trabalho */}
+              <section className="space-y-3">
+                <h3 className="text-sm font-semibold text-foreground">Veículo e trabalho</h3>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium">Tipo de Veículo</label>
+                    <select
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      value={(editForm.vehicleType as string) ?? "CARGO_VAN"}
+                      onChange={(e) => setEditForm({ ...editForm, vehicleType: e.target.value })}
+                    >
+                      {VEHICLE_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium">Transporter ID</label>
+                    <Input
+                      value={(editForm.transporterId as string) ?? ""}
+                      onChange={(e) => setEditForm({ ...editForm, transporterId: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-4">
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={!!editForm.worksCiclo1}
+                      onCheckedChange={(c) => setEditForm({ ...editForm, worksCiclo1: !!c })}
+                    />
+                    Manhã (Ciclo 1)
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={!!editForm.worksCiclo2}
+                      onCheckedChange={(c) => setEditForm({ ...editForm, worksCiclo2: !!c })}
+                    />
+                    Tarde (Ciclo 2)
+                  </label>
+                </div>
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <Checkbox
+                    checked={!!editForm.isTrusted}
+                    onCheckedChange={(c) => setEditForm({ ...editForm, isTrusted: !!c })}
+                  />
+                  Favorito (Confiança)
+                </label>
+              </section>
+
+              {/* Contato */}
+              <section className="space-y-3">
+                <h3 className="text-sm font-semibold text-foreground">Contato</h3>
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium">Grupo WhatsApp</label>
+                  <Input
+                    value={(editForm.whatsappGroup as string) ?? ""}
+                    onChange={(e) => setEditForm({ ...editForm, whatsappGroup: e.target.value })}
+                    maxLength={80}
+                  />
+                </div>
+              </section>
+
+              {/* Preferências */}
+              <section className="space-y-3">
+                <h3 className="text-sm font-semibold text-foreground">Preferências de região</h3>
+                <p className="text-xs text-muted-foreground">Selecione até 3 cidades de preferência.</p>
+                <div className="flex flex-wrap gap-2">
+                  {ALLOWED_CITIES.map((city) => {
+                    const selected = (editForm.cities as string[]) ?? [];
+                    const isSelected = selected.includes(city);
+                    return (
+                      <button
+                        key={city}
+                        type="button"
+                        onClick={() => toggleEditCity(city)}
+                        className={`rounded-full border px-3 py-1 text-xs ${
+                          isSelected
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border hover:bg-accent"
+                        }`}
+                      >
+                        {city}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            </div>
+
+            <DialogFooter>
               <Button variant="outline" onClick={closeEditModal} disabled={saving}>
                 Cancelar
               </Button>
               <Button onClick={handleSave} disabled={saving}>
                 {saving ? "Salvando..." : "Salvar"}
               </Button>
-            </div>
-          </div>
-        </div>
-      )}
+            </DialogFooter>
+          </>
+        )}
+      </Dialog>
 
       {/* Deactivation Modal */}
-      {deactivatingDriver && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md space-y-4 rounded-lg bg-background p-6 shadow-xl">
-            <h2 className="text-lg font-semibold">
-              {canDeactivateDirectly ? "Desativar Motorista" : "Solicitar Desativação"}
-            </h2>
+      <Dialog open={!!deactivatingDriver} onOpenChange={(open) => !open && closeDeactivationModal()}>
+        {deactivatingDriver && (
+          <>
+            <DialogHeader>
+              <DialogTitle>
+                {canDeactivateDirectly ? "Desativar Motorista" : "Solicitar Desativação"}
+              </DialogTitle>
+              <DialogDescription>
+                {canDeactivateDirectly
+                  ? `Você está prestes a desativar o motorista ${deactivatingDriver.name}. Esta ação é imediata.`
+                  : `Como supervisor, sua solicitação será enviada para aprovação do gerente de conta. O motorista ${deactivatingDriver.name} permanecerá ativo até a aprovação.`}
+              </DialogDescription>
+            </DialogHeader>
 
-            <p className="text-sm text-muted-foreground">
-              {canDeactivateDirectly
-                ? `Você está prestes a desativar o motorista ${deactivatingDriver.name}. Esta ação é imediata.`
-                : `Como supervisor, sua solicitação será enviada para aprovação do gerente de conta. O motorista ${deactivatingDriver.name} permanecerá ativo até a aprovação.`}
-            </p>
+            <DialogClose onClose={closeDeactivationModal} />
 
-            <div className="space-y-2">
+            <div className="mt-4 space-y-3">
               <label className="block text-sm font-medium">
                 Motivo {canDeactivateDirectly ? "(opcional)" : "(obrigatório)"}
               </label>
               <textarea
-                className="w-full rounded border px-3 py-2 text-sm"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 rows={3}
                 value={deactivationReason}
                 onChange={(e) => setDeactivationReason(e.target.value)}
@@ -637,7 +961,7 @@ export function DriversClient({
               />
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            <DialogFooter>
               <Button variant="outline" onClick={closeDeactivationModal} disabled={deactivating}>
                 Cancelar
               </Button>
@@ -652,10 +976,10 @@ export function DriversClient({
                     ? "Desativar"
                     : "Enviar Solicitação"}
               </Button>
-            </div>
-          </div>
-        </div>
-      )}
+            </DialogFooter>
+          </>
+        )}
+      </Dialog>
     </div>
   );
 }
