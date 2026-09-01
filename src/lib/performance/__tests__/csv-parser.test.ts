@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import * as XLSX from "xlsx";
 import {
   parsePerformanceCsv,
   parsePerformanceXlsx,
@@ -39,7 +40,7 @@ describe("parsePerformanceCsv", () => {
     expect(first.classification).toBe("FANTASTIC");
     expect(first.deliveredPackages).toBe(725);
     expect(first.dcr).toBe(0.99);
-    expect(first.insucessos).toBe(7.25);
+    expect(first.insucessos).toBe(7);
     expect(first.dnr).toBe(0);
     expect(first.contactCompliance).toBe(1);
     expect(first.swipeToFinishCompliance).toBe(0.95);
@@ -85,7 +86,6 @@ C;T3;Fantastic;100;99%;1;0;99%;99%;Yes`;
 
   it("returns errors for invalid rows", () => {
     const csv = `Nome;Transporter ID;Score;Pacotes Entregues;DCR;Insucessos;DNR DPMO;Contact Compliance;Swipe to Finish Compliance;100% WHC
-;T1;Fantastic;100;99%;1;0;100%;100%;Yes
 A;;Fantastic;100;99%;1;0;100%;100%;Yes
 A;T1;Invalid;100;99%;1;0;100%;100%;Yes
 A;T1;Fantastic;-1;99%;1;0;100%;100%;Yes
@@ -96,7 +96,18 @@ A;T1;Fantastic;100;99%;1;0;100%;100%;Maybe`;
 
     const result = parsePerformanceCsv(encodeCsv(csv, "utf-8"));
     expect(result.rows).toHaveLength(0);
-    expect(result.errors).toHaveLength(8);
+    expect(result.errors).toHaveLength(7);
+  });
+
+  it("allows missing Nome column and returns null name", () => {
+    const csv = `Transporter ID;Score;Pacotes Entregues;DCR;Insucessos;DNR DPMO;Contact Compliance;Swipe to Finish Compliance;100% WHC
+T1;Fantastic;100;99%;1;0;100%;100%;Yes`;
+
+    const result = parsePerformanceCsv(encodeCsv(csv, "utf-8"));
+    expect(result.errors).toEqual([]);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].name).toBeNull();
+    expect(result.rows[0].transporterId).toBe("T1");
   });
 
   it("maps textual scores to classifications correctly", () => {
@@ -128,13 +139,38 @@ I;T9;Razo\xe1vel;100;99%;1;0;100%;100%;Yes`;
 });
 
 describe("parsePerformanceXlsx", () => {
-  it("parses the provided Modelo_Performance.xlsx", () => {
-    // Read the actual model file provided by the user.
-    const fs = require("fs");
-    const buffer = fs.readFileSync(
-      "C:\\Users\\drbar\\Downloads\\Modelo_Performance.xlsx",
-    );
-    const result = parsePerformanceXlsx(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength));
+  it("parses a valid performance XLSX", () => {
+    const worksheet = XLSX.utils.aoa_to_sheet([
+      [
+        "Nome",
+        "Transporter ID",
+        "Score",
+        "Pacotes Entregues",
+        "DCR",
+        "Insucessos",
+        "DNR DPMO",
+        "Contact Compliance",
+        "Swipe to Finish Compliance",
+        "100% WHC",
+      ],
+      [
+        "Daniel Santos de Andrade",
+        "A2HCJBM9Q0LXSF",
+        "Fantastic",
+        1016,
+        0.9807,
+        19.6088,
+        0,
+        1,
+        0,
+        true,
+      ],
+    ]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Planilha1");
+    const buffer = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+
+    const result = parsePerformanceXlsx(buffer);
 
     expect(result.errors).toEqual([]);
     expect(result.rows.length).toBeGreaterThan(0);
@@ -146,10 +182,37 @@ describe("parsePerformanceXlsx", () => {
     expect(first.classification).toBe("FANTASTIC");
     expect(first.deliveredPackages).toBe(1016);
     expect(first.dcr).toBe(0.9807);
-    expect(first.insucessos).toBeCloseTo(19.6088, 4);
+    expect(first.insucessos).toBe(20);
     expect(first.dnr).toBe(0);
     expect(first.contactCompliance).toBe(1);
     expect(first.swipeToFinishCompliance).toBe(0);
     expect(first.whc100).toBe(true);
+  });
+
+  it("parses XLSX without Nome column", () => {
+    const worksheet = XLSX.utils.aoa_to_sheet([
+      [
+        "Transporter ID",
+        "Score",
+        "Pacotes Entregues",
+        "DCR",
+        "Insucessos",
+        "DNR DPMO",
+        "Contact Compliance",
+        "Swipe to Finish Compliance",
+        "100% WHC",
+      ],
+      ["A2HCJBM9Q0LXSF", "Fantastic", 1016, 0.9807, 19.6088, 0, 1, 0, true],
+    ]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Planilha1");
+    const buffer = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+
+    const result = parsePerformanceXlsx(buffer);
+
+    expect(result.errors).toEqual([]);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].name).toBeNull();
+    expect(result.rows[0].transporterId).toBe("A2HCJBM9Q0LXSF");
   });
 });

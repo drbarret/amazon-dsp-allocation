@@ -200,20 +200,22 @@ test.describe("Performance", () => {
     await page.getByRole("button", { name: /Importar performance/ }).click();
     await page
       .locator('input[type="file"]')
-      .setInputFiles("C:\\Users\\drbar\\Downloads\\modelo_performance_W33.csv");
+      .setInputFiles(
+        "C:\\Users\\drbar\\Projects\\amazon-dsp-allocation\\e2e\\fixtures\\performance-new-format.csv",
+      );
     await page.getByRole("button", { name: "Importar", exact: true }).click();
 
     await expect(page.getByText(/Semana WK-33: 2 importado\(s\)/)).toBeVisible({
       timeout: 15_000,
     });
 
-    // Assert calculated insucessos: Marcelo 725*(1-0.99)=7.25→7; Mara 605*(1-0.98)=12.1→12
+    // Assert rounded insucessos: Marcelo 7.25→7; Mara 12.1→12
     const marceloRow = page.getByRole("row", { name: /Marcelo Camargo/ });
     await expect(marceloRow.getByText("7", { exact: true })).toBeVisible();
     const maraRow = page.getByRole("row", { name: /Mara Alves Braz/ });
     await expect(maraRow.getByText("12", { exact: true })).toBeVisible();
 
-    // Total for the two matched drivers
+    // Total packages for the two matched drivers
     await expect(page.getByText("1.330")).toBeVisible();
 
     await page.screenshot({

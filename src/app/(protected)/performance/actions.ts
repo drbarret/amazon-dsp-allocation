@@ -239,7 +239,12 @@ export async function importPerformanceCsv(
       transporterId: { in: transporterIds },
       user: { transportCompanyId: effectiveTransportCompanyId, active: true },
     },
-    select: { id: true, transporterId: true, userId: true },
+    select: {
+      id: true,
+      transporterId: true,
+      userId: true,
+      user: { select: { name: true } },
+    },
   });
   const driverByTransporterId = new Map(
     drivers.map((d) => [d.transporterId as string, d]),
@@ -263,7 +268,7 @@ export async function importPerformanceCsv(
             performanceImportId: performanceImport.id,
             driverProfileId: driver.id,
             transporterId: row.transporterId,
-            name: row.name,
+            name: row.name || driver.user?.name || row.transporterId,
             scoreText: row.scoreText,
             deliveredPackages: row.deliveredPackages,
             dcr: row.dcr,

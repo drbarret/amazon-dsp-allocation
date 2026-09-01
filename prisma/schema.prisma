@@ -691,7 +691,7 @@ model DriverPerformanceSnapshot {
   deliveredPackages   Int
   dcr                 Float // 0-1 decimal parsed from percentage
   dnr                 Int
-  insucessos          Float // imported directly from the file
+  insucessos          Int                     // rounded integer imported from file
   contactCompliance   Float // 0-1 decimal parsed from percentage
   swipeToFinishCompliance Float // 0-1 decimal parsed from percentage
   whc100              Boolean // "Yes"/1/true -> true

@@ -25,6 +25,7 @@ import {
   PackageIcon,
   PercentIcon,
   XIcon,
+  SearchIcon,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { ActionBar } from "@/components/action-bar";
@@ -88,7 +89,7 @@ const CLASSIFICATION_TONE: Record<
 };
 
 function formatDcr(dcr: number): string {
-  return `${(dcr * 100).toFixed(0)}%`;
+  return `${(dcr * 100).toFixed(2)}%`;
 }
 
 export function PerformanceClient({
@@ -146,6 +147,34 @@ export function PerformanceClient({
   );
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const normalizedSearch = search
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  const filteredRows = useMemo(() => {
+    if (!normalizedSearch) return rows;
+    return rows.filter((r) => {
+      const name = (r.name || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+      const transporterId = r.transporterId.toLowerCase();
+      const scoreText = (r.scoreText || "").toLowerCase();
+      const classification = CLASSIFICATION_LABELS[r.classification]
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+      return (
+        name.includes(normalizedSearch) ||
+        transporterId.includes(normalizedSearch) ||
+        scoreText.includes(normalizedSearch) ||
+        classification.includes(normalizedSearch)
+      );
+    });
+  }, [rows, normalizedSearch]);
 
   const selectedWeek = useMemo(
     () => filteredWeeks.find((w) => w.id === selectedWeekId) ?? null,
@@ -288,7 +317,7 @@ export function PerformanceClient({
       className: "text-right whitespace-nowrap",
       cell: (d) => (
         <span className="text-destructive font-semibold">
-          {d.insucessos.toFixed(2)}
+          {d.insucessos.toLocaleString("pt-BR")}
         </span>
       ),
     },
@@ -334,13 +363,20 @@ export function PerformanceClient({
   ];
 
   const summary = useMemo(() => {
-    if (rows.length === 0) return null;
-    const totalPackages = rows.reduce((acc, r) => acc + r.deliveredPackages, 0);
-    const totalInsucessos = rows.reduce((acc, r) => acc + r.insucessos, 0);
-    const avgDcr = rows.reduce((acc, r) => acc + r.dcr, 0) / rows.length;
-    const whcCount = rows.filter((r) => r.whc100).length;
+    if (filteredRows.length === 0) return null;
+    const totalPackages = filteredRows.reduce(
+      (acc, r) => acc + r.deliveredPackages,
+      0,
+    );
+    const totalInsucessos = filteredRows.reduce(
+      (acc, r) => acc + r.insucessos,
+      0,
+    );
+    const avgDcr =
+      filteredRows.reduce((acc, r) => acc + r.dcr, 0) / filteredRows.length;
+    const whcCount = filteredRows.filter((r) => r.whc100).length;
     return { totalPackages, totalInsucessos, avgDcr, whcCount };
-  }, [rows]);
+  }, [filteredRows]);
 
   if (!hasTransportCompany && !canSelectCompany) {
     return (
@@ -403,36 +439,50 @@ export function PerformanceClient({
       />
 
       <ActionBar>
-        <Button
-          onClick={() => setDialogOpen(true)}
-          disabled={isImporting || !selectedWeekId || isSelectedWeekClosed}
-          title={
-            isSelectedWeekClosed
-              ? "Semana fechada — importação desabilitada"
-              : undefined
-          }
-        >
-          <UploadIcon className="mr-2 size-4" />
-          Importar performance (.xlsx)
-        </Button>
-        <Button
-          variant="destructive"
-          onClick={() => setClearDialogOpen(true)}
-          disabled={
-            isClearing ||
-            !selectedWeekId ||
-            rows.length === 0 ||
-            isSelectedWeekClosed
-          }
-          title={
-            isSelectedWeekClosed
-              ? "Semana fechada — limpeza desabilitada"
-              : undefined
-          }
-        >
-          <Trash2Icon className="mr-2 size-4" />
-          Limpar semana
-        </Button>
+        <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              onClick={() => setDialogOpen(true)}
+              disabled={isImporting || !selectedWeekId || isSelectedWeekClosed}
+              title={
+                isSelectedWeekClosed
+                  ? "Semana fechada — importação desabilitada"
+                  : undefined
+              }
+            >
+              <UploadIcon className="mr-2 size-4" />
+              Importar performance (.xlsx)
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => setClearDialogOpen(true)}
+              disabled={
+                isClearing ||
+                !selectedWeekId ||
+                rows.length === 0 ||
+                isSelectedWeekClosed
+              }
+              title={
+                isSelectedWeekClosed
+                  ? "Semana fechada — limpeza desabilitada"
+                  : undefined
+              }
+            >
+              <Trash2Icon className="mr-2 size-4" />
+              Limpar semana
+            </Button>
+          </div>
+          <div className="relative max-w-sm flex-1">
+            <SearchIcon className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por motorista, Transporter ID ou desempenho..."
+              aria-label="Buscar performance"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+        </div>
       </ActionBar>
 
       {isSelectedWeekClosed && (
@@ -482,10 +532,7 @@ export function PerformanceClient({
           <SummaryCard
             icon={XIcon}
             label="Insucessos"
-            value={summary.totalInsucessos.toLocaleString("pt-BR", {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })}
+            value={summary.totalInsucessos.toLocaleString("pt-BR")}
             tone="danger"
           />
           <SummaryCard
@@ -507,19 +554,23 @@ export function PerformanceClient({
             Performance importada
           </h2>
           {selectedWeek && (
-            <Badge variant="muted">{rows.length} motorista(s)</Badge>
+            <Badge variant="muted">{filteredRows.length} motorista(s)</Badge>
           )}
         </div>
 
         <DataTable
           columns={columns}
-          rows={rows}
+          rows={filteredRows}
           loading={loadingRows}
           ariaLabel="Performance importada"
           empty={{
             icon: TrophyIcon,
-            title: "Nenhuma performance importada para esta semana",
-            hint: "Importe o arquivo CSV da Amazon para visualizar os dados.",
+            title: search
+              ? "Nenhum motorista encontrado para esta busca"
+              : "Nenhuma performance importada para esta semana",
+            hint: search
+              ? "Limpe a busca ou ajuste os critérios."
+              : "Importe o arquivo CSV da Amazon para visualizar os dados.",
           }}
         />
       </div>
@@ -544,9 +595,10 @@ export function PerformanceClient({
             />
           </div>
           <p className="text-muted-foreground text-xs">
-            A planilha deve conter as colunas: Nome, Transporter ID, Score,
-            Pacotes Entregues, DCR, Insucessos, DNR DPMO, Contact Compliance,
-            Swipe to Finish Compliance, 100% WHC.
+            A planilha deve conter as colunas: Transporter ID, Score, Pacotes
+            Entregues, DCR, Insucessos, DNR DPMO, Contact Compliance, Swipe to
+            Finish Compliance, 100% WHC. A coluna Nome é opcional; quando
+            ausente, o sistema usa o nome cadastrado do motorista.
           </p>
         </div>
         <DialogFooter>

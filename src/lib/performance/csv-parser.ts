@@ -3,14 +3,14 @@ import * as XLSX from "xlsx";
 
 export interface PerformanceRow {
   row: number;
-  name: string;
+  name: string | null;
   transporterId: string;
   scoreText: string;
   classification: ScorecardClassification;
   deliveredPackages: number;
   dcr: number; // 0-1 decimal
   dnr: number;
-  insucessos: number; // float, imported directly from file
+  insucessos: number; // rounded integer
   contactCompliance: number; // 0-1 decimal
   swipeToFinishCompliance: number; // 0-1 decimal
   whc100: boolean;
@@ -155,7 +155,9 @@ function parseRow(
   lineNumber: number,
   columns: Record<string, number>,
 ): { row?: PerformanceRow; error?: PerformanceParseError } {
-  const name = String(cells[columns.name] ?? "").trim();
+  const nameRaw = cells[columns.name];
+  const name =
+    columns.name === -1 ? null : String(nameRaw ?? "").trim() || null;
   const transporterId = String(cells[columns.transporterId] ?? "").trim();
   const scoreText = String(cells[columns.score] ?? "").trim();
   const deliveredRaw = cells[columns.delivered];
@@ -166,13 +168,10 @@ function parseRow(
   const swipeRaw = cells[columns.swipeToFinishCompliance];
   const whcRaw = cells[columns.whc100];
 
-  if (!name && !transporterId && !scoreText && !deliveredRaw) {
+  if (!transporterId && !scoreText && !deliveredRaw) {
     return {};
   }
 
-  if (!name) {
-    return { error: { row: lineNumber, reason: "Nome do motorista ausente." } };
-  }
   if (!transporterId) {
     return { error: { row: lineNumber, reason: "Transporter ID ausente." } };
   }
@@ -202,8 +201,8 @@ function parseRow(
     return { error: { row: lineNumber, reason: `DCR inválido: "${dcrRaw}".` } };
   }
 
-  const insucessos = parseFloatStrict(insucessosRaw);
-  if (insucessos === null || insucessos < 0) {
+  const insucessosParsed = parseFloatStrict(insucessosRaw);
+  if (insucessosParsed === null || insucessosParsed < 0) {
     return {
       error: {
         row: lineNumber,
@@ -211,6 +210,7 @@ function parseRow(
       },
     };
   }
+  const insucessos = Math.round(insucessosParsed);
 
   const dnr = parseIntStrict(dnrRaw);
   if (dnr === null || dnr < 0) {
@@ -312,7 +312,6 @@ function detectColumns(headers: string[]): {
   ]);
 
   const missing: string[] = [];
-  if (colName === -1) missing.push("Nome");
   if (colTransporterId === -1) missing.push("TransporterID");
   if (colScore === -1) missing.push("Score");
   if (colDelivered === -1) missing.push("PacotesEntregues");

@@ -93,7 +93,7 @@ describe("PerformanceClient", () => {
           deliveredPackages: 725,
           dcr: 0.99,
           dnr: 0,
-          insucessos: 7.25,
+          insucessos: 7,
           contactCompliance: 1,
           swipeToFinishCompliance: 0.95,
           whc100: true,
@@ -117,8 +117,73 @@ describe("PerformanceClient", () => {
     });
     expect(screen.getByText("A3P2DUI47V0SU0")).toBeInTheDocument();
     expect(screen.getByText("Fantastic")).toBeInTheDocument();
-    expect(screen.getByText("7.25")).toBeInTheDocument();
-    expect(screen.getByText("7,25")).toBeInTheDocument();
+    expect(screen.getAllByText("7").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("99.00%").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("filters snapshots by search query", async () => {
+    mockListPerformanceSnapshots.mockResolvedValue({
+      success: true,
+      rows: [
+        {
+          id: "snap-1",
+          name: "Marcelo Camargo",
+          transporterId: "A3P2DUI47V0SU0",
+          scoreText: "Fantastic",
+          deliveredPackages: 725,
+          dcr: 0.99,
+          dnr: 0,
+          insucessos: 7,
+          contactCompliance: 1,
+          swipeToFinishCompliance: 0.95,
+          whc100: true,
+          classification: "FANTASTIC",
+        },
+        {
+          id: "snap-2",
+          name: "Mara Alves Braz",
+          transporterId: "A290ACFF14HMPO",
+          scoreText: "Great",
+          deliveredPackages: 605,
+          dcr: 0.98,
+          dnr: 1,
+          insucessos: 12,
+          contactCompliance: 0.95,
+          swipeToFinishCompliance: 0.9,
+          whc100: false,
+          classification: "GREAT",
+        },
+      ],
+    });
+
+    render(
+      <PerformanceClient
+        weeks={baseWeeks.filter((w) => w.weekNumber < 35)}
+        initialWeekId="week-34"
+        hasTransportCompany={true}
+        companies={[]}
+        userRole="SUPERVISOR"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Marcelo Camargo")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Mara Alves Braz")).toBeInTheDocument();
+
+    const searchInput = screen.getByLabelText(/Buscar performance/);
+    fireEvent.change(searchInput, { target: { value: "Mara" } });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Marcelo Camargo")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("Mara Alves Braz")).toBeInTheDocument();
+
+    fireEvent.change(searchInput, { target: { value: "A3P2" } });
+    await waitFor(() => {
+      expect(screen.getByText("Marcelo Camargo")).toBeInTheDocument();
+      expect(screen.queryByText("Mara Alves Braz")).not.toBeInTheDocument();
+    });
   });
 
   it("disables import button when week is closed", () => {
