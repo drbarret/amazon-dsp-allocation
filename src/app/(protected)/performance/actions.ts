@@ -4,7 +4,7 @@ import { requireRole } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/lib/audit";
 import {
-  parsePerformanceCsv,
+  parsePerformanceFile,
   type PerformanceParseError,
 } from "@/lib/performance/csv-parser";
 import { revalidatePath } from "next/cache";
@@ -31,11 +31,14 @@ export interface PerformanceSnapshotRow {
   id: string;
   name: string;
   transporterId: string;
-  score: number;
+  scoreText: string | null;
   deliveredPackages: number;
   dcr: number;
   dnr: number;
   insucessos: number;
+  contactCompliance: number;
+  swipeToFinishCompliance: number;
+  whc100: boolean;
   classification: ScorecardClassification;
 }
 
@@ -208,8 +211,9 @@ export async function importPerformanceCsv(
     };
   }
 
+  const fileName = (file as File).name || "performance.xlsx";
   const arrayBuffer = await file.arrayBuffer();
-  const parseResult = parsePerformanceCsv(arrayBuffer, { delimiter: ";" });
+  const parseResult = parsePerformanceFile(arrayBuffer, fileName);
 
   const errors: PerformanceParseError[] = [...parseResult.errors];
   let imported = 0;
@@ -222,7 +226,7 @@ export async function importPerformanceCsv(
       year: dispatchWeek.year,
       weekNumber: dispatchWeek.weekNumber,
       transportCompanyId: effectiveTransportCompanyId,
-      fileName: (file as File).name || "performance.csv",
+      fileName,
       importedById: actorId,
       status: "PROCESSING",
     },
@@ -254,21 +258,20 @@ export async function importPerformanceCsv(
           continue;
         }
 
-        const insucessos = Math.round(
-          row.deliveredPackages - row.dcr * row.deliveredPackages,
-        );
-
         await tx.driverPerformanceSnapshot.create({
           data: {
             performanceImportId: performanceImport.id,
             driverProfileId: driver.id,
             transporterId: row.transporterId,
             name: row.name,
-            score: row.score,
+            scoreText: row.scoreText,
             deliveredPackages: row.deliveredPackages,
             dcr: row.dcr,
             dnr: row.dnr,
-            insucessos,
+            insucessos: row.insucessos,
+            contactCompliance: row.contactCompliance,
+            swipeToFinishCompliance: row.swipeToFinishCompliance,
+            whc100: row.whc100,
             classification: row.classification,
           },
         });
@@ -362,11 +365,14 @@ export async function listPerformanceSnapshots(
       id: true,
       name: true,
       transporterId: true,
-      score: true,
+      scoreText: true,
       deliveredPackages: true,
       dcr: true,
       dnr: true,
       insucessos: true,
+      contactCompliance: true,
+      swipeToFinishCompliance: true,
+      whc100: true,
       classification: true,
     },
   });

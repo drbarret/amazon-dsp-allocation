@@ -22,7 +22,6 @@ import {
   Building2Icon,
   Trash2Icon,
   LockIcon,
-  TrendingUpIcon,
   PackageIcon,
   PercentIcon,
   XIcon,
@@ -269,8 +268,10 @@ export function PerformanceClient({
     },
     {
       header: "Score",
-      className: "text-right whitespace-nowrap",
-      cell: (d) => <span className="font-semibold">{d.score}</span>,
+      className: "whitespace-nowrap",
+      cell: (d) => (
+        <span className="font-semibold">{d.scoreText ?? "-"}</span>
+      ),
     },
     {
       header: "Pacotes",
@@ -283,15 +284,42 @@ export function PerformanceClient({
       cell: (d) => <span>{formatDcr(d.dcr)}</span>,
     },
     {
+      header: "Insucessos",
+      className: "text-right whitespace-nowrap",
+      cell: (d) => (
+        <span className="text-destructive font-semibold">
+          {d.insucessos.toFixed(2)}
+        </span>
+      ),
+    },
+    {
       header: "DNR",
       className: "text-right whitespace-nowrap",
       cell: (d) => <span>{d.dnr}</span>,
     },
     {
-      header: "Insucessos",
+      header: "Contact",
       className: "text-right whitespace-nowrap",
+      cell: (d) => <span>{formatDcr(d.contactCompliance)}</span>,
+    },
+    {
+      header: "Swipe",
+      className: "text-right whitespace-nowrap",
+      cell: (d) => <span>{formatDcr(d.swipeToFinishCompliance)}</span>,
+    },
+    {
+      header: "100% WHC",
+      className: "text-center whitespace-nowrap",
       cell: (d) => (
-        <span className="text-destructive font-semibold">{d.insucessos}</span>
+        <span
+          className={`inline-flex items-center justify-center rounded-full px-2 py-0.5 text-xs font-medium ${
+            d.whc100
+              ? "bg-success-bg text-success-fg"
+              : "bg-danger-bg text-danger-fg"
+          }`}
+        >
+          {d.whc100 ? "Sim" : "Não"}
+        </span>
       ),
     },
     {
@@ -309,11 +337,9 @@ export function PerformanceClient({
     if (rows.length === 0) return null;
     const totalPackages = rows.reduce((acc, r) => acc + r.deliveredPackages, 0);
     const totalInsucessos = rows.reduce((acc, r) => acc + r.insucessos, 0);
-    const avgScore = Math.round(
-      rows.reduce((acc, r) => acc + r.score, 0) / rows.length,
-    );
     const avgDcr = rows.reduce((acc, r) => acc + r.dcr, 0) / rows.length;
-    return { totalPackages, totalInsucessos, avgScore, avgDcr };
+    const whcCount = rows.filter((r) => r.whc100).length;
+    return { totalPackages, totalInsucessos, avgDcr, whcCount };
   }, [rows]);
 
   if (!hasTransportCompany && !canSelectCompany) {
@@ -387,7 +413,7 @@ export function PerformanceClient({
           }
         >
           <UploadIcon className="mr-2 size-4" />
-          Importar performance (.csv)
+          Importar performance (.xlsx)
         </Button>
         <Button
           variant="destructive"
@@ -456,18 +482,21 @@ export function PerformanceClient({
           <SummaryCard
             icon={XIcon}
             label="Insucessos"
-            value={summary.totalInsucessos.toLocaleString("pt-BR")}
+            value={summary.totalInsucessos.toLocaleString("pt-BR", {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}
             tone="danger"
-          />
-          <SummaryCard
-            icon={TrendingUpIcon}
-            label="Score médio"
-            value={String(summary.avgScore)}
           />
           <SummaryCard
             icon={PercentIcon}
             label="DCR médio"
             value={formatDcr(summary.avgDcr)}
+          />
+          <SummaryCard
+            icon={PackageIcon}
+            label="100% WHC"
+            value={`${summary.whcCount} / ${rows.length}`}
           />
         </div>
       )}
@@ -499,25 +528,25 @@ export function PerformanceClient({
         <DialogHeader>
           <DialogTitle>Importar performance</DialogTitle>
           <DialogDescription>
-            Selecione o arquivo CSV da Amazon para a semana{" "}
+            Selecione o arquivo XLSX da Amazon para a semana{" "}
             <strong>{selectedWeek?.weekKey}</strong>.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="performance-file">Arquivo .csv</Label>
+            <Label htmlFor="performance-file">Arquivo .xlsx</Label>
             <Input
               id="performance-file"
               type="file"
-              accept=".csv,text/csv"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
               disabled={isImporting}
             />
           </div>
           <p className="text-muted-foreground text-xs">
-            O CSV deve usar <strong>;</strong> como separador e conter as
-            colunas: Nome, TransporterID, Score, PacotesEntregues, DCR, DNR,
-            Desempenho.
+            A planilha deve conter as colunas: Nome, Transporter ID, Score,
+            Pacotes Entregues, DCR, Insucessos, DNR DPMO, Contact Compliance,
+            Swipe to Finish Compliance, 100% WHC.
           </p>
         </div>
         <DialogFooter>

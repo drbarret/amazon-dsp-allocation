@@ -687,11 +687,14 @@ model DriverPerformanceSnapshot {
   driverProfileId     String?
   transporterId       String
   name                String
-  score               Int
+  scoreText           String?
   deliveredPackages   Int
   dcr                 Float // 0-1 decimal parsed from percentage
   dnr                 Int
-  insucessos          Int // calculated: deliveredPackages - (dcr * deliveredPackages)
+  insucessos          Float // imported directly from the file
+  contactCompliance   Float // 0-1 decimal parsed from percentage
+  swipeToFinishCompliance Float // 0-1 decimal parsed from percentage
+  whc100              Boolean // "Yes"/1/true -> true
   classification      ScorecardClassification
   createdAt           DateTime                @default(now())
 

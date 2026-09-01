@@ -89,12 +89,15 @@ describe("PerformanceClient", () => {
           id: "snap-1",
           name: "Marcelo Camargo",
           transporterId: "A3P2DUI47V0SU0",
-          score: 100,
+          scoreText: "Fantastic",
           deliveredPackages: 725,
           dcr: 0.99,
           dnr: 0,
-          insucessos: 7,
-          classification: "FANTASTIC_PLUS",
+          insucessos: 7.25,
+          contactCompliance: 1,
+          swipeToFinishCompliance: 0.95,
+          whc100: true,
+          classification: "FANTASTIC",
         },
       ],
     });
@@ -113,7 +116,9 @@ describe("PerformanceClient", () => {
       expect(screen.getByText("Marcelo Camargo")).toBeInTheDocument();
     });
     expect(screen.getByText("A3P2DUI47V0SU0")).toBeInTheDocument();
-    expect(screen.getAllByText("7")).toHaveLength(2); // summary card + table cell
+    expect(screen.getByText("Fantastic")).toBeInTheDocument();
+    expect(screen.getByText("7.25")).toBeInTheDocument();
+    expect(screen.getByText("7,25")).toBeInTheDocument();
   });
 
   it("disables import button when week is closed", () => {

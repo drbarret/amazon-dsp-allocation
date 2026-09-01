@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { parsePerformanceCsv } from "@/lib/performance/csv-parser";
+import {
+  parsePerformanceCsv,
+  parsePerformanceXlsx,
+} from "@/lib/performance/csv-parser";
 
 function encodeCsv(
   text: string,
@@ -17,14 +20,14 @@ function encodeCsv(
   return bytes.buffer;
 }
 
-describe("parsePerformanceCsv", () => {
-  it("parses the sample CSV with semicolon separator", () => {
-    const csv = `Nome;TransporterID;Score;PacotesEntregues;DCR;DNR;Desempenho
-Marcelo Camargo;A3P2DUI47V0SU0;100;725;99%;0;Fantastico Plus
-Mara Alves Braz;A290ACFF14HMPO;85;605;98%;1;Bom
-Renato Jose Miranda;RMZNFKEDMRPWE;72;514;93%;0;Razoavel`;
+const SAMPLE_CSV = `Nome;Transporter ID;Score;Pacotes Entregues;DCR;Insucessos;DNR DPMO;Contact Compliance;Swipe to Finish Compliance;100% WHC
+Marcelo Camargo;A3P2DUI47V0SU0;Fantastic;725;99%;7.25;0;100%;95%;Yes
+Mara Alves Braz;A290ACFF14HMPO;Great;605;98%;12.1;1;0.95;0.90;No
+Renato Jose Miranda;RMZNFKEDMRPWE;Fair;514;0.93;35.98;0;1;1;1`;
 
-    const result = parsePerformanceCsv(encodeCsv(csv, "utf-8"));
+describe("parsePerformanceCsv", () => {
+  it("parses the sample CSV with semicolon separator and new columns", () => {
+    const result = parsePerformanceCsv(encodeCsv(SAMPLE_CSV, "utf-8"));
 
     expect(result.errors).toEqual([]);
     expect(result.rows).toHaveLength(3);
@@ -32,65 +35,81 @@ Renato Jose Miranda;RMZNFKEDMRPWE;72;514;93%;0;Razoavel`;
     const first = result.rows[0];
     expect(first.name).toBe("Marcelo Camargo");
     expect(first.transporterId).toBe("A3P2DUI47V0SU0");
-    expect(first.score).toBe(100);
+    expect(first.scoreText).toBe("Fantastic");
+    expect(first.classification).toBe("FANTASTIC");
     expect(first.deliveredPackages).toBe(725);
     expect(first.dcr).toBe(0.99);
+    expect(first.insucessos).toBe(7.25);
     expect(first.dnr).toBe(0);
-    expect(first.classification).toBe("FANTASTIC_PLUS");
+    expect(first.contactCompliance).toBe(1);
+    expect(first.swipeToFinishCompliance).toBe(0.95);
+    expect(first.whc100).toBe(true);
 
     const second = result.rows[1];
-    expect(second.score).toBe(85);
+    expect(second.scoreText).toBe("Great");
     expect(second.classification).toBe("GREAT");
+    expect(second.whc100).toBe(false);
 
     const third = result.rows[2];
-    expect(third.score).toBe(72);
-    expect(third.classification).toBe("GREAT");
+    expect(third.scoreText).toBe("Fair");
+    expect(third.classification).toBe("FAIR");
   });
 
   it("falls back to Latin-1 when UTF-8 decoding fails", () => {
-    const nameWithAccent = "Lu\xedz Fernando"; // Latin-1 encoded "Luíz"
-    const csv = `Nome;TransporterID;Score;PacotesEntregues;DCR;DNR;Desempenho
-${nameWithAccent};A1NVG23ZLR1L69;100;383;98%;0;Fantastico Plus`;
+    const nameWithAccent = "Lu\xedz Fernando"; // Latin-1 encoded "Lu\xedz"
+    const csv = `Nome;Transporter ID;Score;Pacotes Entregues;DCR;Insucessos;DNR DPMO;Contact Compliance;Swipe to Finish Compliance;100% WHC
+${nameWithAccent};A1NVG23ZLR1L69;Fantastic Plus;383;98%;7.66;0;100%;100%;Yes`;
 
     const result = parsePerformanceCsv(encodeCsv(csv, "iso-8859-1"));
 
     expect(result.errors).toEqual([]);
     expect(result.rows).toHaveLength(1);
-    expect(result.rows[0].name).toBe("Luíz Fernando");
+    expect(result.rows[0].name).toBe("Lu\xedz Fernando");
+    expect(result.rows[0].classification).toBe("FANTASTIC_PLUS");
   });
 
-  it("handles DCR as raw decimal and percentage", () => {
-    const csv = `Nome;TransporterID;Score;PacotesEntregues;DCR;DNR;Desempenho
-A;T1;100;100;0.99;0;F+
-B;T2;100;100;99;0;F+
-C;T3;100;100;99%;0;F+`;
+  it("handles DCR, Contact and Swipe as raw decimal, integer or percentage", () => {
+    const csv = `Nome;Transporter ID;Score;Pacotes Entregues;DCR;Insucessos;DNR DPMO;Contact Compliance;Swipe to Finish Compliance;100% WHC
+A;T1;Fantastic;100;0.99;1;0;0.99;0.99;Yes
+B;T2;Fantastic;100;99;1;0;99;99;Yes
+C;T3;Fantastic;100;99%;1;0;99%;99%;Yes`;
 
     const result = parsePerformanceCsv(encodeCsv(csv, "utf-8"));
     expect(result.errors).toEqual([]);
-    expect(result.rows.map((r) => r.dcr)).toEqual([0.99, 0.99, 0.99]);
+    expect(result.rows.map((r) => [r.dcr, r.contactCompliance, r.swipeToFinishCompliance])).toEqual([
+      [0.99, 0.99, 0.99],
+      [0.99, 0.99, 0.99],
+      [0.99, 0.99, 0.99],
+    ]);
   });
 
   it("returns errors for invalid rows", () => {
-    const csv = `Nome;TransporterID;Score;PacotesEntregues;DCR;DNR;Desempenho
-;T1;100;100;99%;0;F+
-A;;100;100;99%;0;F+
-A;T1;101;100;99%;0;F+
-A;T1;100;-1;99%;0;F+
-A;T1;100;100;150%;0;F+
-A;T1;100;100;99%;x;F+`;
+    const csv = `Nome;Transporter ID;Score;Pacotes Entregues;DCR;Insucessos;DNR DPMO;Contact Compliance;Swipe to Finish Compliance;100% WHC
+;T1;Fantastic;100;99%;1;0;100%;100%;Yes
+A;;Fantastic;100;99%;1;0;100%;100%;Yes
+A;T1;Invalid;100;99%;1;0;100%;100%;Yes
+A;T1;Fantastic;-1;99%;1;0;100%;100%;Yes
+A;T1;Fantastic;100;150%;1;0;100%;100%;Yes
+A;T1;Fantastic;100;99%;1;x;100%;100%;Yes
+A;T1;Fantastic;100;99%;1;0;150%;100%;Yes
+A;T1;Fantastic;100;99%;1;0;100%;100%;Maybe`;
 
     const result = parsePerformanceCsv(encodeCsv(csv, "utf-8"));
     expect(result.rows).toHaveLength(0);
-    expect(result.errors).toHaveLength(6);
+    expect(result.errors).toHaveLength(8);
   });
 
-  it("maps scores to classifications correctly", () => {
-    const csv = `Nome;TransporterID;Score;PacotesEntregues;DCR;DNR;Desempenho
-A;T1;45;100;99%;0;Ruim
-B;T2;60;100;99%;0;Razoavel
-C;T3;80;100;99%;0;Bom
-D;T4;92;100;99%;0;Fantastico
-E;T5;98;100;99%;0;Fantastico Plus`;
+  it("maps textual scores to classifications correctly", () => {
+    const csv = `Nome;Transporter ID;Score;Pacotes Entregues;DCR;Insucessos;DNR DPMO;Contact Compliance;Swipe to Finish Compliance;100% WHC
+A;T1;Poor;100;99%;1;0;100%;100%;Yes
+B;T2;Fair;100;99%;1;0;100%;100%;Yes
+C;T3;Great;100;99%;1;0;100%;100%;Yes
+D;T4;Fantastic;100;99%;1;0;100%;100%;Yes
+E;T5;Fantastic Plus;100;99%;1;0;100%;100%;Yes
+F;T6;F+;100;99%;1;0;100%;100%;Yes
+G;T7;Ruim;100;99%;1;0;100%;100%;Yes
+H;T8;Bom;100;99%;1;0;100%;100%;Yes
+I;T9;Razo\xe1vel;100;99%;1;0;100%;100%;Yes`;
 
     const result = parsePerformanceCsv(encodeCsv(csv, "utf-8"));
     expect(result.errors).toEqual([]);
@@ -100,6 +119,37 @@ E;T5;98;100;99%;0;Fantastico Plus`;
       "GREAT",
       "FANTASTIC",
       "FANTASTIC_PLUS",
+      "FANTASTIC_PLUS",
+      "POOR",
+      "GREAT",
+      "FAIR",
     ]);
+  });
+});
+
+describe("parsePerformanceXlsx", () => {
+  it("parses the provided Modelo_Performance.xlsx", () => {
+    // Read the actual model file provided by the user.
+    const fs = require("fs");
+    const buffer = fs.readFileSync(
+      "C:\\Users\\drbar\\Downloads\\Modelo_Performance.xlsx",
+    );
+    const result = parsePerformanceXlsx(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength));
+
+    expect(result.errors).toEqual([]);
+    expect(result.rows.length).toBeGreaterThan(0);
+
+    const first = result.rows[0];
+    expect(first.name).toBe("Daniel Santos de Andrade");
+    expect(first.transporterId).toBe("A2HCJBM9Q0LXSF");
+    expect(first.scoreText).toBe("Fantastic");
+    expect(first.classification).toBe("FANTASTIC");
+    expect(first.deliveredPackages).toBe(1016);
+    expect(first.dcr).toBe(0.9807);
+    expect(first.insucessos).toBeCloseTo(19.6088, 4);
+    expect(first.dnr).toBe(0);
+    expect(first.contactCompliance).toBe(1);
+    expect(first.swipeToFinishCompliance).toBe(0);
+    expect(first.whc100).toBe(true);
   });
 });
